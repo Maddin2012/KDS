@@ -26,8 +26,14 @@ Ohne Netz geht das genauso – übertragen wird, sobald wieder Verbindung besteh
 
 **Archiv.** Alle abgeschlossenen Protokolle aller Geräte, neueste zuerst.
 Suche nach Fahrzeug, Monteur, Prüfpunkt oder Bemerkung, Filter nach Kategorie.
-Ein Protokoll lässt sich öffnen und erneut drucken. Abgeschlossene Protokolle kann
-niemand mehr ändern.
+Ein Protokoll lässt sich öffnen und erneut drucken.
+
+**Protokolle nachträglich bearbeiten – nur Admins (mit PIN).** Im geöffneten
+Protokoll **„✏️ Bearbeiten“**: Kopfdaten, i.O. / n.i.O. / behoben, Bemerkungen
+und Monteure ändern → **Speichern**. Kategorie, „abgeschlossen von“ und der
+Abschlusszeitpunkt bleiben unverändert. Jede Bearbeitung wird vermerkt
+(„zuletzt bearbeitet von … am …“, im Archiv „✎ bearbeitet“). Alle anderen
+können abgeschlossene Protokolle nur ansehen und drucken.
 
 **„Ich bin“.** Jedes Gerät wählt einmal, wer es benutzt (unten in der
 Seitenleiste, jederzeit änderbar). Im Archiv steht dann, wer ein Protokoll

@@ -240,6 +240,11 @@ export function createCloudStore(cfg) {
       return Promise.resolve(ref.id);
     },
 
+    /* Nachträgliche Bearbeitung durch Admins (Regeln prüfen Recht und Felder) */
+    updateProtocol(id, patch) {
+      return track(updateDoc(doc(db, 'workshops', wid, 'protocols', id), patch));
+    },
+
     deleteProtocol(id) {
       return track(deleteDoc(doc(db, 'workshops', wid, 'protocols', id)));
     },

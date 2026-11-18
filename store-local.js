@@ -76,6 +76,11 @@ export function createLocalStore() {
       return id;
     },
 
+    async updateProtocol(id, patch) {
+      write(K_PROTO, read(K_PROTO, []).map(p => p.id === id ? { ...p, ...patch } : p));
+      emitProto();
+    },
+
     async deleteProtocol(id) {
       write(K_PROTO, read(K_PROTO, []).filter(p => p.id !== id));
       emitProto();

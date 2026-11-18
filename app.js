@@ -29,6 +29,7 @@ const S = {
   protocols: [],
   openId: null,
   renderDeferred: false,
+  protoEdit: false,         // abgeschlossenes Protokoll wird von Admin bearbeitet
   claim: null,              // Admin-Nachweis dieses Geräts (nur mit richtiger PIN)
   pinFlags: {}              // für welche Admin-Kürzel eine PIN festgelegt ist
 };
@@ -100,7 +101,7 @@ function renderNav() {
 }
 
 function renderChrome() {
-  const mode = S.view === 'list' ? (S.edit ? 'edit' : 'list') : S.view;
+  const mode = S.view === 'list' ? (S.edit ? 'edit' : 'list') : (S.view === 'protocol' && S.protoEdit ? 'protoedit' : S.view);
   const admin = amAdmin();
   document.querySelectorAll('#hero-actions [data-show]').forEach(b => {
     const tokens = b.dataset.show.split(' ');
@@ -110,7 +111,7 @@ function renderChrome() {
 
   let title;
   if (mode === 'archive') title = 'Archiv';
-  else if (mode === 'protocol') {
+  else if (mode === 'protocol' || mode === 'protoedit') {
     const p = S.protocols.find(x => x.id === S.openId);
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
@@ -126,7 +127,7 @@ function renderChrome() {
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
 
-  const readOnly = mode === 'protocol';
+  const readOnly = mode === 'protocol';   // beim Bearbeiten (protoedit) sind die Kopffelder frei
   HEADER_FIELDS.forEach(id => { $(id).readOnly = readOnly; });
   $('cards').classList.toggle('ro', readOnly);
   renderNav();
@@ -399,6 +400,7 @@ function renderArchive() {
     if (st.open) badges.push(`<span class="badge bad">${st.open} offen</span>`);
     if (st.fixed) badges.push(`<span class="badge pend">${st.fixed} behoben</span>`);
     if (!st.open && !st.fixed && st.ok) badges.push('<span class="badge ok">i.O.</span>');
+    if (p.editedBy) badges.push(`<span class="badge cat" title="bearbeitet von ${esc(p.editedBy)}">✎ bearbeitet</span>`);
     if (p._pending) badges.push('<span class="badge pend" title="Wird übertragen, sobald Netz da ist">⟳</span>');
     const mont = (p.monteure || []).join(', ');
     return `
@@ -415,13 +417,23 @@ function renderArchive() {
 
 function renderProtocol() {
   const p = S.protocols.find(x => x.id === S.openId);
-  if (!p) { S.view = 'archive'; render(); return; }
+  if (!p) { S.view = 'archive'; S.protoEdit = false; render(); return; }
+  const editing = S.protoEdit && amAdmin();
+  if (!editing) S.protoEdit = false;
   applyHeader(p.header || {});
-  const at = new Date(p.ts || 0);
-  $('proto-info').innerHTML = `<b>${esc((p.header && p.header.fId) || '—')}</b> · ${esc(p.category)} · abgeschlossen von ${esc(monteurLabel(p.closedBy || '?'))} am ${esc(at.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}`;
-  $('btn-del-proto').classList.toggle('hidden', !amAdmin());
+  const fmt = (ts) => new Date(ts || 0).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  $('proto-info').innerHTML = `<b>${esc((p.header && p.header.fId) || '—')}</b> · ${esc(p.category)} · abgeschlossen von ${esc(monteurLabel(p.closedBy || '?'))} am ${esc(fmt(p.ts))}`
+    + (p.editedBy ? `<br><small>zuletzt bearbeitet von ${esc(monteurLabel(p.editedBy))} am ${esc(fmt(p.editedAt))}</small>` : '')
+    + (editing ? '<br><b style="color:var(--orange-dk)">Bearbeiten – Kopfdaten, Haken, Bemerkungen und Monteure sind änderbar.</b>' : '');
+  $('btn-del-proto').classList.toggle('hidden', !amAdmin() || editing);
+  $('btn-edit-proto').classList.toggle('hidden', !amAdmin() || editing);
+  $('btn-back-proto').classList.toggle('hidden', editing);
+  $('btn-save-proto').classList.toggle('hidden', !editing);
+  $('btn-cancel-proto').classList.toggle('hidden', !editing);
+
   const chk = (v) => `<input type="checkbox" class="chk-view" ${v ? 'checked' : ''} tabindex="-1" aria-readonly="true">`;
-  $('proto-groups').innerHTML = (p.groups || []).map(g => `
+  const chkEdit = (v, k) => `<input type="checkbox" class="chk-status" data-k="${k}" ${v ? 'checked' : ''} aria-label="${k}">`;
+  $('proto-groups').innerHTML = (p.groups || []).map((g, gi) => `
     <div class="box">
       <div class="sec-title"><div class="title-left"><span class="readonly-title">${esc(g.title)}</span></div></div>
       <table class="service-table">
@@ -429,14 +441,63 @@ function renderProtocol() {
           <th class="col-desc">Prüfpunkt / Arbeitsschritt</th><th class="col-note">Bemerkung / Zusatz</th>
           <th class="col-status">i.O.</th><th class="col-status">n.i.O.</th><th class="col-status">behoben</th>
         </tr></thead>
-        <tbody>${g.items.map(i => `
+        <tbody>${g.items.map((i, ii) => editing ? `
+          <tr data-g="${gi}" data-i="${ii}"><td class="item-text">${esc(i.text)}</td>
+          <td contenteditable="true" class="editable-cell proto-note">${esc(i.note)}</td>
+          <td class="center">${chkEdit(i.io, 'io')}</td><td class="center">${chkEdit(i.nio, 'nio')}</td><td class="center">${chkEdit(i.beh, 'beh')}</td></tr>` : `
           <tr><td class="item-text">${esc(i.text)}</td><td>${esc(i.note)}</td>
           <td class="center">${chk(i.io)}</td><td class="center">${chk(i.nio)}</td><td class="center">${chk(i.beh)}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>`).join('');
-  $('proto-monteure').textContent = (p.monteure || []).map(monteurLabel).join(', ') || '—';
+  if (editing) {
+    $('proto-monteure').innerHTML = MONTEURE.map(m => `
+      <label class="ms-opt"><input type="checkbox" class="chk-proto-monteur" value="${esc(m.code)}" ${(p.monteure || []).includes(m.code) ? 'checked' : ''}>
+      <code>${esc(m.code)}</code><span>${esc(m.name)}</span></label>`).join('');
+  } else {
+    $('proto-monteure').textContent = (p.monteure || []).map(monteurLabel).join(', ') || '—';
+  }
   $('proto-meta').textContent = '';
+}
+
+/* Bearbeitetes Protokoll aus der Ansicht auslesen und speichern (nur Admin) */
+async function saveProtocolEdit() {
+  const p = S.protocols.find(x => x.id === S.openId);
+  if (!p || !amAdmin()) return;
+  const groups = (p.groups || []).map(g => ({ ...g, items: g.items.map(i => ({ ...i })) }));
+  document.querySelectorAll('#proto-groups tr[data-g]').forEach(tr => {
+    const it = groups[+tr.dataset.g].items[+tr.dataset.i];
+    it.note = tr.querySelector('.proto-note').innerText.trim();
+    ['io', 'nio', 'beh'].forEach(k => { it[k] = tr.querySelector(`.chk-status[data-k="${k}"]`).checked; });
+  });
+  const header = {};
+  HEADER_FIELDS.forEach(id => { header[id] = $(id).value.trim(); });
+  if (!header.fId) { showToast('„ID / Fahrzeug“ darf nicht leer sein'); $('fId').focus(); return; }
+  const monteure = Array.from(document.querySelectorAll('.chk-proto-monteur:checked')).map(c => c.value);
+  const now = Date.now();
+  const patch = {
+    header, monteure, groups,
+    editedBy: S.me, editedAt: now,
+    edits: [...(Array.isArray(p.edits) ? p.edits : []), { by: S.me, ts: now }].slice(-50)
+  };
+  const btn = $('btn-save-proto'); btn.disabled = true;
+  try {
+    await S.store.updateProtocol(p.id, patch);
+    Object.assign(p, patch);
+    S.protoEdit = false;
+    render();
+    showToast('Protokoll gespeichert');
+  } catch (e) {
+    showToast(e && e.code === 'permission-denied' ? 'Keine Berechtigung – bitte als Admin mit PIN anmelden' : 'Speichern fehlgeschlagen');
+  } finally { btn.disabled = false; }
+}
+
+/* Vor dem Verlassen einer laufenden Bearbeitung nachfragen */
+async function leaveProtoEdit() {
+  if (!S.protoEdit) return true;
+  if (!(await confirmModal('Änderungen am Protokoll verwerfen?', 'Verwerfen'))) return false;
+  S.protoEdit = false;
+  return true;
 }
 
 /* =====================================================================
@@ -855,7 +916,10 @@ const actions = {
     updatePasteButton();
     showToast(`„${title}“ kopiert – in einer anderen Kategorie einfügbar`);
   },
-  'back-archive': () => { S.view = 'archive'; S.openId = null; render(); },
+  'back-archive': () => { S.view = 'archive'; S.openId = null; S.protoEdit = false; render(); },
+  'edit-protocol': () => { if (!amAdmin()) return; S.protoEdit = true; render(); },
+  'save-protocol': saveProtocolEdit,
+  'cancel-protocol-edit': () => { S.protoEdit = false; render(); },
   'delete-protocol': async () => {
     const p = S.protocols.find(x => x.id === S.openId);
     if (!p || !amAdmin()) return;
@@ -871,6 +935,7 @@ document.addEventListener('click', (e) => {
 
   const nav = e.target.closest('.nav-item');
   if (nav) {
+    if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
     if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
@@ -895,19 +960,28 @@ $('arch-cat').addEventListener('change', renderArchive);
 
 /* Status-Logik i.O. / n.i.O. / behoben
    i.O. schließt n.i.O. und behoben aus; behoben setzt n.i.O.; n.i.O. abwählen nimmt behoben weg. */
-function handleStatus(chk) {
+function applyStatusLogic(chk) {
   const tr = chk.closest('tr');
   const get = (k) => tr.querySelector(`.chk-status[data-k="${k}"]`);
   const io = get('io'), nio = get('nio'), beh = get('beh');
   if (chk === io && io.checked) { nio.checked = false; beh.checked = false; }
   if (chk === nio) { if (nio.checked) io.checked = false; else beh.checked = false; }
   if (chk === beh && beh.checked) { nio.checked = true; io.checked = false; }
+  return { tr, io, nio, beh };
+}
+function handleStatus(chk) {
+  const { tr, io, nio, beh } = applyStatusLogic(chk);
   const s = { io: io.checked, nio: nio.checked, beh: beh.checked };
   if (s.io || s.nio || s.beh) draft.status[tr.dataset.iid] = s; else delete draft.status[tr.dataset.iid];
 }
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (S.view === 'protocol' && S.protoEdit) {
+    if (t.classList.contains('chk-status')) applyStatusLogic(t);
+    if (t.id === 'fDate') markEmptyDate();
+    return;
+  }
   if (S.view !== 'list' || S.edit) return;
   if (t.classList.contains('chk-status')) { handleStatus(t); saveDraft(); }
   else if (t.classList.contains('chk-row-active')) {

@@ -30,7 +30,12 @@ await t('PE darf Vorlagen lesen', assertSucceeds(getDocs(collection(pe, 'worksho
 await t('PE darf Protokoll anlegen', assertSucceeds(addDoc(collection(pe, 'workshops', W, 'protocols'), { ts: 2 })));
 await t('PE darf Protokoll NICHT ändern', assertFails(updateDoc(doc(pe, 'workshops', W, 'protocols', 'p1'), { ts: 9 })));
 await t('PE darf Protokoll NICHT löschen', assertFails(deleteDoc(doc(pe, 'workshops', W, 'protocols', 'p1'))));
-await t('SE darf Protokoll NICHT ändern', assertFails(updateDoc(doc(se, 'workshops', W, 'protocols', 'p1'), { ts: 9 })));
+await t('Admin SE darf Abschlusszeit NICHT ändern', assertFails(updateDoc(doc(se, 'workshops', W, 'protocols', 'p1'), { ts: 9 })));
+await t('Admin SE darf „abgeschlossen von“ NICHT ändern', assertFails(updateDoc(doc(se, 'workshops', W, 'protocols', 'p1'), { closedBy: 'XX' })));
+await t('Admin SE darf Kategorie NICHT ändern', assertFails(updateDoc(doc(se, 'workshops', W, 'protocols', 'p1'), { category: 'PKW' })));
+await t('Admin SE darf Protokoll bearbeiten (Kopf, Haken, Bemerkungen, Monteure)', assertSucceeds(updateDoc(doc(se, 'workshops', W, 'protocols', 'p1'),
+  { header: { fId: 'MK 88' }, monteure: ['SE'], groups: [], editedBy: 'SE', editedAt: 5, edits: [{ by: 'SE', ts: 5 }] })));
+await t('PE darf Protokoll NICHT bearbeiten', assertFails(updateDoc(doc(pe, 'workshops', W, 'protocols', 'p1'), { header: { fId: 'X' } })));
 await t('SE darf Protokoll löschen', assertSucceeds(deleteDoc(doc(se, 'workshops', W, 'protocols', 'p1'))));
 await t('PE darf fremden „Ich bin“-Eintrag NICHT ändern', assertFails(setDoc(doc(pe, 'workshops', W, 'members', 'se'), { monteur: 'PE' })));
 await t('Fremder sieht keine Protokolle', assertFails(getDocs(collection(fremd, 'workshops', W, 'protocols'))));

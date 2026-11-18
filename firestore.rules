@@ -121,11 +121,14 @@ service cloud.firestore {
         allow write: if isAdmin(wid);
       }
 
-      // Abgeschlossene Protokolle: anlegen und lesen alle Mitglieder,
-      // nachträglich ändern niemand, löschen nur Admins.
+      // Abgeschlossene Protokolle: anlegen und lesen alle Mitglieder.
+      // Nachträglich bearbeiten und löschen nur Admins (mit PIN). Beim Bearbeiten
+      // bleiben Kategorie, „abgeschlossen von“ und Abschlusszeit unveränderlich.
       match /protocols/{pid} {
         allow read, create: if isMember(wid);
-        allow update: if false;
+        allow update: if isAdmin(wid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['header', 'monteure', 'groups', 'editedBy', 'editedAt', 'edits']);
         allow delete: if isAdmin(wid);
       }
     }
