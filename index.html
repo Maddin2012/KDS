@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Serviceliste · Krandienst Schulz</title>
+
+<meta name="theme-color" content="#111213">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KS Service">
+
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+
+<!-- Firebase-Zugangsdaten. Wird beim Veröffentlichen aus den GitHub-Secrets erzeugt.
+     Ohne Werte läuft die App im Probemodus (nur dieses Gerät). -->
+<script src="config.js"></script>
+</head>
+<body>
+
+<div class="app">
+  <!-- ══ Seitenleiste ══ -->
+  <div class="side">
+    <div class="brand">
+      <div class="wm"><span class="bar"></span><span class="txt">Krandienst <em>Schulz</em></span></div>
+      <span class="sub" id="sidebar-sub">Serviceliste Kran</span>
+    </div>
+
+    <nav class="side-nav" id="nav-cats">
+      <div class="nav-title">Kategorien</div>
+      <!-- per Script -->
+    </nav>
+
+    <nav class="side-nav">
+      <div class="nav-title">Ablage</div>
+      <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
+    </nav>
+
+    <div class="side-foot">
+      <div>
+        <span class="lbl">Ich bin</span>
+        <button class="side-btn" id="btn-me" type="button">–</button>
+      </div>
+      <div id="ws-box" class="hidden">
+        <span class="lbl">Werkstatt-Code</span>
+        <span class="ws-code" id="ws-code"></span>
+        <button class="link-btn" id="btn-invite" type="button" style="margin-left:8px">Einladen</button>
+      </div>
+      <div class="sync" id="sync"><span class="dot"></span><span id="sync-text">…</span></div>
+    </div>
+  </div>
+
+  <!-- ══ Hauptbereich ══ -->
+  <div class="main">
+    <div class="hero">
+      <div class="row">
+        <div class="hero-title-group">
+          <button class="btn-toggle-side no-print" id="btn-side" title="Navigation ein-/ausblenden">☰</button>
+          <h2 id="main-title">Serviceliste Kran</h2>
+        </div>
+        <div class="hero-actions no-print" id="hero-actions">
+          <!-- Liste -->
+          <button class="btn-outline" data-act="edit-template" data-show="list admin">Vorlage bearbeiten</button>
+          <button class="btn-outline" data-act="new-protocol" data-show="list">Neu beginnen</button>
+          <button class="btn-w" data-act="print" data-show="list protocol">Drucken / PDF</button>
+          <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
+        </div>
+      </div>
+
+      <div class="cards" id="cards">
+        <div class="card">
+          <label for="fId">ID / Fahrzeug</label>
+          <input id="fId" placeholder="z. B. MK 88" autocomplete="off">
+        </div>
+        <div class="card">
+          <label for="fKm">Km. Stand</label>
+          <input id="fKm" inputmode="numeric" placeholder="0" autocomplete="off"><span class="u">km</span>
+        </div>
+        <div class="card">
+          <label for="fOw">Std. OW</label>
+          <input id="fOw" inputmode="decimal" placeholder="0" autocomplete="off"><span class="u">Std.</span>
+        </div>
+        <div class="card">
+          <label for="fUw">Std. UW</label>
+          <input id="fUw" inputmode="decimal" placeholder="0" autocomplete="off"><span class="u">Std.</span>
+        </div>
+        <div class="card">
+          <label for="fDate">Datum</label>
+          <input id="fDate" type="date">
+        </div>
+      </div>
+    </div>
+
+    <div class="body" id="body">
+      <!-- ── Ansicht: Serviceliste ausfüllen / Vorlage bearbeiten ── -->
+      <div id="view-list">
+        <div class="edit-banner hidden" id="edit-banner">
+          <div><b>Vorlage bearbeiten</b> · Änderungen gelten für alle Geräte und werden sofort gespeichert.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-sec" data-act="reset-template">Standardvorlage laden</button>
+            <button class="btn-sec" data-act="done-template">✓ Fertig</button>
+          </div>
+        </div>
+
+        <div id="groups-container"></div>
+
+        <div id="edit-tools" class="hidden">
+          <button class="btn-add-group no-print" data-act="add-group"><span>➕</span> Neue Hauptgruppe hinzufügen</button>
+          <button id="btn-paste-group" class="btn-add-group no-print btn-paste" data-act="paste-group" disabled>
+            <span>📋</span> Kopierte Gruppe einfügen
+          </button>
+        </div>
+
+        <div class="box monteure" id="monteure-box">
+          <div class="sec-title"><div class="title-left"><span>Monteure</span></div></div>
+          <div class="ms" id="ms-monteure">
+            <button type="button" class="ms-btn no-print" id="ms-btn">
+              <span class="ms-value empty" id="ms-value">Monteur(e) auswählen …</span>
+              <span class="ms-arrow">▾</span>
+            </button>
+            <div class="ms-panel no-print" id="ms-panel"></div>
+          </div>
+          <div class="ms-print" id="ms-print"></div>
+        </div>
+      </div>
+
+      <!-- ── Ansicht: Archiv ── -->
+      <div id="view-archive" class="hidden">
+        <div class="arch-tools no-print">
+          <input id="arch-search" type="search" placeholder="Suchen: Fahrzeug, Monteur, Prüfpunkt …" autocomplete="off">
+          <select id="arch-cat"><option value="">Alle Kategorien</option></select>
+        </div>
+        <div class="arch-list" id="arch-list"></div>
+      </div>
+
+      <!-- ── Ansicht: abgeschlossenes Protokoll ── -->
+      <div id="view-protocol" class="hidden">
+        <div class="proto-banner no-print">
+          <div id="proto-info"></div>
+          <div class="actions">
+            <button class="btn-sec" data-act="back-archive">← Zurück zum Archiv</button>
+            <button class="btn-sec btn-danger hidden" data-act="delete-protocol" id="btn-del-proto">🗑️ Löschen</button>
+          </div>
+        </div>
+        <div id="proto-groups"></div>
+        <div class="box monteure">
+          <div class="sec-title"><div class="title-left"><span>Monteure</span></div></div>
+          <div id="proto-monteure" style="font-weight:600"></div>
+          <div class="proto-meta" id="proto-meta"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Einrichtung (erster Start) -->
+<div class="setup-overlay hidden" id="setup"></div>
+
+<div id="toast" class="toast"></div>
+
+<div id="confirm-modal-overlay" class="confirm-overlay no-print">
+  <div class="confirm-box">
+    <div id="confirm-modal-body"></div>
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-actions">
+      <button id="confirm-modal-no" class="btn-sec">Abbrechen</button>
+      <button id="confirm-modal-yes" class="btn-sec btn-danger">Bestätigen</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

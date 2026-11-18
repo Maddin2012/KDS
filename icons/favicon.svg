@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Hintergrund -->
+  <rect width="512" height="512" rx="110" fill="#111213"/>
+
+  <!-- dezente diagonale Akzentflächen oben rechts -->
+  <g opacity="0.14">
+    <polygon points="360,0 410,0 512,102 512,152" fill="#ff8300"/>
+    <polygon points="430,0 480,0 512,32 512,82" fill="#ff8300"/>
+  </g>
+
+  <!-- Rahmen -->
+  <rect x="32" y="32" width="448" height="448" rx="80" fill="none" stroke="#ff8300" stroke-width="16"/>
+
+  <!-- KS Monogramm -->
+  <text x="256" y="300" font-family="'Barlow Condensed','Arial Black',sans-serif" font-size="196"
+        font-weight="900" fill="#ff8300" text-anchor="middle" letter-spacing="2">KS</text>
+
+  <!-- Checkmark-Badge (Service/Prüfung) -->
+  <circle cx="378" cy="150" r="54" fill="#111213" stroke="#ff8300" stroke-width="10"/>
+  <path d="M 355 150 L 372 168 L 404 130" fill="none" stroke="#ff8300" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- SERVICE Ribbon -->
+  <rect x="128" y="352" width="256" height="44" rx="8" fill="#ff8300"/>
+  <text x="256" y="382" font-family="'Barlow Condensed',sans-serif" font-size="26"
+        font-weight="800" fill="#111213" text-anchor="middle" letter-spacing="5">SERVICE</text>
+</svg>

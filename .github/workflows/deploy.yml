@@ -1,0 +1,60 @@
+name: Veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  # Von Hand anstoßen – praktisch nach dem Eintragen der Firebase-Secrets.
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Firebase-Zugangsdaten eintragen
+        # Der Firebase-Web-Schlüssel ist kein Geheimnis (er steht ohnehin in der
+        # ausgelieferten Seite), abgesichert wird über firestore.rules.
+        # Trotzdem über Secrets, damit die Werte nicht im Repository stehen.
+        env:
+          FB_API_KEY: ${{ secrets.FB_API_KEY }}
+          FB_AUTH_DOMAIN: ${{ secrets.FB_AUTH_DOMAIN }}
+          FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
+          FB_APP_ID: ${{ secrets.FB_APP_ID }}
+        run: |
+          mkdir -p dist
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'dist' --exclude 'README.md' --exclude 'firestore.rules' --exclude 'tests' --exclude '.gitignore' ./ dist/
+          if [ -n "$FB_API_KEY" ] && [ -n "$FB_PROJECT_ID" ]; then
+            node -e '
+              const c = { apiKey: process.env.FB_API_KEY, authDomain: process.env.FB_AUTH_DOMAIN,
+                          projectId: process.env.FB_PROJECT_ID, appId: process.env.FB_APP_ID };
+              require("fs").writeFileSync("dist/config.js", "window.KDS_FIREBASE_CONFIG = " + JSON.stringify(c) + ";\n");'
+            echo "Firebase-Zugangsdaten eingetragen."
+          else
+            echo "::warning::Keine Firebase-Secrets gefunden – die App läuft im Probemodus (nur ein Gerät)."
+          fi
+          # Neue Version → Service Worker lädt alle Dateien neu
+          sed -i "s/const VERSION = 'kds-v1';/const VERSION = 'kds-${GITHUB_SHA::8}';/" dist/sw.js
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

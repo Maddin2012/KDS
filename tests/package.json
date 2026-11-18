@@ -1,0 +1,14 @@
+{
+  "name": "kds-tests",
+  "private": true,
+  "type": "module",
+  "description": "Prüft die Firestore-Sicherheitsregeln gegen den lokalen Firebase-Emulator.",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-rules \"node rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "12.18.0",
+    "firebase-tools": "^14.27.0"
+  }
+}

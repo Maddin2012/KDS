@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// Sicherheitsregeln für die KDS Serviceliste.
+//
+// Modell (wie bei PlanPrepEat): Alle Daten hängen unter workshops/{code}.
+// Der 16-stellige Code ist zugleich der Einladungscode. Wer ihn kennt, darf
+// beitreten; wer nicht Mitglied ist, sieht nichts.
+//
+// „Ich bin“: Jedes Gerät trägt unter members/{uid} sein Monteur-Kürzel ein.
+// Admins (SE, KÖ) dürfen Vorlagen ändern und Protokolle löschen.
+// ADMINS muss mit data.js übereinstimmen.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(wid) {
+      return signedIn()
+        && get(/databases/$(database)/documents/workshops/$(wid))
+             .data.members[request.auth.uid] == true;
+    }
+
+    function isAdmin(wid) {
+      return isMember(wid)
+        && get(/databases/$(database)/documents/workshops/$(wid)/members/$(request.auth.uid))
+             .data.monteur in ['SE', 'KÖ'];
+    }
+
+    // Beitritt: Nur das Feld `members` und darin nur der eigene Eintrag.
+    function isSelfJoin() {
+      return signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+        && request.resource.data.members.diff(resource.data.members)
+             .affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.members[request.auth.uid] == true;
+    }
+
+    match /workshops/{wid} {
+      // Einzelnes get() für jeden Angemeldeten, damit ein falscher Code eine
+      // verständliche Meldung ergibt. Auflisten aller Werkstätten ist verboten.
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.members[request.auth.uid] == true;
+
+      allow update: if isMember(wid) || isSelfJoin();
+      allow delete: if false;
+
+      // „Ich bin“ je Gerät: lesen dürfen alle Mitglieder, schreiben nur den eigenen Eintrag.
+      match /members/{uid} {
+        allow read: if isMember(wid);
+        allow write: if isMember(wid) && request.auth.uid == uid;
+      }
+
+      // Vorlagen: lesen alle Mitglieder, ändern nur Admins.
+      match /templates/{cat} {
+        allow read: if isMember(wid);
+        allow write: if isAdmin(wid);
+      }
+
+      // Abgeschlossene Protokolle: anlegen und lesen alle Mitglieder,
+      // nachträglich ändern niemand, löschen nur Admins.
+      match /protocols/{pid} {
+        allow read, create: if isMember(wid);
+        allow update: if false;
+        allow delete: if isAdmin(wid);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
