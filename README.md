@@ -148,7 +148,10 @@ Werkstatt wäre ein getrennter Bereich mit eigenem Archiv.
 **iPhone/Safari:** Teilen → **Zum Home-Bildschirm**.
 
 Nach einem Update holt sich die App den neuen Stand beim nächsten Öffnen mit Netz;
-notfalls die App einmal ganz schließen und neu öffnen.
+notfalls die App einmal ganz schließen (aus der App-Übersicht wegwischen) und neu
+öffnen. Welche Version läuft, steht unten in der Seitenleiste unter **„Stand:“**
+(Datum und Uhrzeit der Veröffentlichung) – damit lässt sich auf jedem Gerät
+prüfen, ob ein Update angekommen ist.
 
 ### Woran sehe ich, ob alles verbunden ist?
 

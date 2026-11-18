@@ -834,10 +834,22 @@ document.addEventListener('focusout', (e) => {
 
 window.addEventListener('beforeprint', markEmptyDate);
 
+/* Versionsstand (wird beim Veröffentlichen in config.js geschrieben) */
+function renderBuild() {
+  const b = window.KDS_BUILD;
+  const el = $('build');
+  if (!b || !b.time) { el.textContent = 'Stand: lokale Version'; return; }
+  const d = new Date(b.time);
+  const when = d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  el.textContent = 'Stand: ' + when + ' Uhr';
+  el.title = 'Version ' + (b.sha || '');
+}
+
 /* =====================================================================
    Start
    ===================================================================== */
 async function start() {
+  renderBuild();
   // Seitenleiste: gemerkter Zustand; auf dem Handy standardmäßig eingeklappt
   const sideState = lsGet('kds_sidebar_collapsed', null);
   if (sideState === 'true' || (sideState === null && window.innerWidth <= 940)) document.querySelector('.app').classList.add('sidebar-collapsed');

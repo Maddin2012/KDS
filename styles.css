@@ -533,3 +533,6 @@
   @keyframes kds-shake { 0%,100% { transform:none } 20%,60% { transform:translateX(-6px) } 40%,80% { transform:translateX(6px) } }
   .pick-grid.attention { animation:kds-shake .4s ease }
   .pick-grid.attention .pick { border-color:var(--orange) }
+
+  /* Versionsstand */
+  .build { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--steel-2) }

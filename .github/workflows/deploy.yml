@@ -60,6 +60,8 @@ jobs:
           else
             echo "::warning::Keine Firebase-Secrets gefunden – die App läuft im Probemodus (nur ein Gerät)."
           fi
+          # Versionsstand für die Anzeige in der App (Seitenleiste unten)
+          echo "window.KDS_BUILD = { sha: \"${GITHUB_SHA::7}\", time: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" };" >> dist/config.js
           # Neue Version → Service Worker lädt alle Dateien neu
           sed -i "s/const VERSION = 'kds-v1';/const VERSION = 'kds-${GITHUB_SHA::8}';/" dist/sw.js
 
