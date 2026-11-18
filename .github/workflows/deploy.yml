@@ -50,8 +50,10 @@ jobs:
                 errors.push("FB_PROJECT_ID passt nicht: nur Kleinbuchstaben, Ziffern und Bindestriche erwartet");
               if (!/\.firebaseapp\.com$/.test(c.authDomain))
                 errors.push("FB_AUTH_DOMAIN passt nicht: erwartet …firebaseapp.com");
-              if (!/^1:\d+:web:[0-9a-f]+$/.test(c.appId))
-                errors.push("FB_APP_ID passt nicht: erwartet 1:…:web:…");
+              // Form eines Wertes zeigen, ohne ihn preiszugeben: Ziffern → 9, Buchstaben → a
+              const shape = (v) => v.replace(/[0-9]/g, "9").replace(/[A-Za-z]/g, "a");
+              if (!/^\d+:\d+:web:[0-9A-Za-z]+$/.test(c.appId))
+                errors.push("FB_APP_ID passt nicht: erwartet die Form 9:999999999999:web:aaaa… – eingetragen ist die Form " + JSON.stringify(shape(c.appId)) + " (" + c.appId.length + " Zeichen)");
               if (errors.length) { errors.forEach(e => console.log("::error::" + e)); process.exit(1); }
               require("fs").writeFileSync("dist/config.js", "window.KDS_FIREBASE_CONFIG = " + JSON.stringify(c) + ";\n");'
             echo "Firebase-Zugangsdaten geprüft und eingetragen."
