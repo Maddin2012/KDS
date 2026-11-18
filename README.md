@@ -132,10 +132,12 @@ Jeder Push auf `main` veröffentlicht automatisch neu.
 1. **Erstes Gerät, als Admin (SE oder KÖ):** App öffnen → bei „Wer bist du?“
    das eigene Kürzel wählen → **Neue Werkstatt anlegen**. Die Standardvorlagen
    werden dabei übernommen.
-2. In der Seitenleiste unten steht der **Werkstatt-Code**. Über **Einladen**
+2. Unten in der Seitenleiste auf das eigene Kürzel („Ich bin“) tippen. Im Fenster
+   steht unter **Kollegen einladen** der **Werkstatt-Code**; über **Einladen**
    wird ein Link geteilt (WhatsApp, Mail …).
-3. **Weitere Geräte:** Link öffnen → Kürzel wählen → **Beitreten** (der Code ist
-   schon eingetragen). Ohne Link: Code von Hand eingeben.
+3. **Weitere Geräte:** Link öffnen → erst das eigene **Kürzel antippen** →
+   **Beitreten** (der Code ist schon eingetragen). Ohne Link: Code von Hand
+   eingeben – mit oder ohne Leerzeichen, Groß-/Kleinschreibung egal.
 
 **Wichtig:** „Neue Werkstatt anlegen“ nur ein einziges Mal. Jede weitere
 Werkstatt wäre ein getrennter Bereich mit eigenem Archiv.

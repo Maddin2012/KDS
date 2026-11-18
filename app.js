@@ -92,9 +92,6 @@ function renderNav() {
   const meBtn = $('btn-me');
   meBtn.innerHTML = S.me ? esc(monteurLabel(S.me)) + (isAdmin(S.me) ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
 
-  const ws = S.store && S.store.workshop;
-  $('ws-box').classList.toggle('hidden', !(S.store && S.store.mode === 'cloud' && ws));
-  if (ws && ws.id) $('ws-code').textContent = ws.id.replace(/(.{4})/g, '$1 ').trim();
 }
 
 function renderChrome() {
@@ -455,6 +452,21 @@ function setMe(code) {
   render();
 }
 
+/* Werkstatt-Code + Einladen (nur mit gemeinsamer Ablage) */
+function inviteHtml() {
+  const ws = S.store && S.store.mode === 'cloud' && S.store.workshop;
+  if (!ws || !ws.id) return '';
+  return `
+    <div class="invite-box">
+      <h3>Kollegen einladen</h3>
+      <p>Link teilen – wer ihn öffnet, wählt sein Kürzel und tippt auf „Beitreten“.</p>
+      <div class="invite-row">
+        <span class="invite-code">${esc(ws.id.replace(/(.{4})/g, '$1 ').trim())}</span>
+        <button class="btn-sec" data-x="invite" type="button">🔗 Einladen</button>
+      </div>
+    </div>`;
+}
+
 /* Auswahl „Ich bin“ als Dialog */
 function pickMe(allowCancel = true) {
   return new Promise(resolve => {
@@ -465,10 +477,12 @@ function pickMe(allowCancel = true) {
         <h3>Wer bist du?</h3>
         <p>Gilt für dieses Gerät. Im Archiv steht dann, wer ein Protokoll abgeschlossen hat.</p>
         ${mePickerHtml(S.me)}
-        ${allowCancel ? '<div class="setup-back"><button class="link-btn" data-x="cancel" type="button">Abbrechen</button></div>' : ''}
+        ${inviteHtml()}
+        ${allowCancel ? '<div class="setup-back"><button class="link-btn" data-x="cancel" type="button">Schließen</button></div>' : ''}
       </div>`;
     ov.classList.remove('hidden');
     ov.onclick = (e) => {
+      if (e.target.closest('[data-x="invite"]')) { invite(); return; }
       const b = e.target.closest('.pick');
       if (b) { ov.classList.add('hidden'); ov.onclick = null; setMe(b.dataset.code); resolve(b.dataset.code); }
       else if (e.target.closest('[data-x="cancel"]')) { ov.classList.add('hidden'); ov.onclick = null; resolve(null); }
@@ -496,15 +510,15 @@ function runSetup(message) {
             <label for="join-code">Werkstatt-Code</label>
             <input id="join-code" class="code" maxlength="24" autocomplete="off" value="${esc(urlCode)}" placeholder="XXXX XXXX XXXX XXXX">
           </div>
-          <button class="btn-big" data-x="join" type="button" ${me ? '' : 'disabled'}>Beitreten</button>
+          <button class="btn-big" data-x="join" type="button">Beitreten</button>
           <div class="or">— oder, nur beim allerersten Gerät —</div>
-          <button class="btn-big alt" data-x="create" type="button" ${me ? '' : 'disabled'}>Neue Werkstatt anlegen</button>
+          <button class="btn-big alt" data-x="create" type="button">Neue Werkstatt anlegen</button>
           <div class="setup-err" id="setup-err">${esc(err || '')}</div>
         </div>`;
     };
     draw();
     ov.classList.remove('hidden');
-    const busy = (on) => ov.querySelectorAll('.btn-big').forEach(b => { b.disabled = on || !me; });
+    const busy = (on) => ov.querySelectorAll('.btn-big').forEach(b => { b.disabled = on; });
     ov.onclick = async (e) => {
       const pick = e.target.closest('.pick');
       if (pick) {
@@ -512,7 +526,14 @@ function runSetup(message) {
         me = pick.dataset.code; draw(); $('join-code').value = code; return;
       }
       const x = e.target.closest('[data-x]');
-      if (!x || !me) return;
+      if (!x) return;
+      if (!me) {
+        $('setup-err').textContent = 'Bitte zuerst oben unter „1. Wer bist du?“ dein Kürzel antippen.';
+        const grid = ov.querySelector('.pick-grid');
+        grid.classList.remove('attention'); void grid.offsetWidth; grid.classList.add('attention');
+        grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       busy(true);
       try {
         if (x.dataset.x === 'join') {
@@ -741,7 +762,6 @@ $('btn-side').addEventListener('click', () => {
   lsSet('kds_sidebar_collapsed', app.classList.contains('sidebar-collapsed'));
 });
 $('btn-me').addEventListener('click', () => pickMe(true));
-$('btn-invite').addEventListener('click', invite);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 

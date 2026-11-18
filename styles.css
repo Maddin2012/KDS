@@ -523,3 +523,13 @@
   .cards.ro input::placeholder { color:transparent }
   .cards.ro input::-webkit-calendar-picker-indicator { display:none }
   .cards.ro input:focus { box-shadow:none }
+
+  /* Einladen im „Ich bin“-Fenster */
+  .invite-box { margin-top:22px; padding-top:18px; border-top:1px solid var(--line) }
+  .invite-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap }
+  .invite-code { font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:16px; letter-spacing:.06em }
+  .invite-row .btn-sec { font-size:14px; padding:8px 14px }
+  /* Hinweis: Kürzel fehlt */
+  @keyframes kds-shake { 0%,100% { transform:none } 20%,60% { transform:translateX(-6px) } 40%,80% { transform:translateX(6px) } }
+  .pick-grid.attention { animation:kds-shake .4s ease }
+  .pick-grid.attention .pick { border-color:var(--orange) }
