@@ -33,15 +33,33 @@ niemand mehr ändern.
 Seitenleiste, jederzeit änderbar). Im Archiv steht dann, wer ein Protokoll
 abgeschlossen hat.
 
-**Admins: SE (M. Seidler) und KÖ (R. Köpcke).** Nur sie sehen
+**Admins: SE (M. Seidler) und KÖ (R. Köpcke) – mit PIN.** Nur sie sehen
 **„Vorlage bearbeiten“**: Hauptgruppen und Prüfpunkte anlegen, umbenennen,
 verschieben (Griff ⠿, auch per Finger), löschen, Gruppen in andere Kategorien
 kopieren. Änderungen gelten sofort auf allen Geräten. Nur Admins können
 Protokolle aus dem Archiv löschen.
 
-> „Ich bin“ ist eine Auswahl, kein Passwort. Wer am Gerät „SE“ wählt, hat
-> Admin-Rechte. Für eine Werkstatt, in der man sich kennt, reicht das; die Daten
-> sind trotzdem nur für Geräte mit dem Werkstatt-Code sichtbar.
+Wer bei „Ich bin“ **SE** oder **KÖ** (🔒) antippt, muss die PIN eingeben.
+Die PIN steht nirgends im Code: In Firebase liegt nur ein Prüfwert, den kein
+Gerät lesen kann, und die **Firebase-Regeln** prüfen bei jedem Admin-Vorgang,
+ob das Gerät mit der richtigen PIN angemeldet ist – auch an der App vorbei.
+Ein Gerät bleibt angemeldet, bis es ein anderes Kürzel wählt.
+
+- **Erste PIN:** Gibt es in der Werkstatt noch keine PIN, legt das erste
+  Gerät, das SE (oder KÖ) wählt, die PIN fest (zweimal eingeben).
+- **Weitere PINs / ändern:** angemeldeter Admin → „Ich bin“ → **Admin-PINs**.
+  Für ein Kürzel ohne PIN (z. B. KÖ, solange keine festgelegt ist) ist die
+  Anmeldung gesperrt.
+- **PIN ändern** meldet alle Geräte ab, die mit der alten PIN angemeldet waren.
+- **PIN vergessen:** Der andere Admin legt eine neue fest. Gibt es keinen:
+  in der Firebase-Konsole unter *Firestore Database* die Einträge
+  `workshops → <Code> → pins` und `pinFlags` löschen; danach kann die PIN neu
+  festgelegt werden.
+
+> Eine 4-stellige PIN hält Kollegen ab, die einfach „SE“ antippen. Gegen
+> jemanden, der den Werkstatt-Code hat und gezielt per Programm alle
+> Kombinationen durchprobiert, schützt sie nicht vollständig – längere PINs
+> (bis 12 Ziffern) sind möglich.
 
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
@@ -49,8 +67,8 @@ leer, abgewählte Punkte erscheinen nicht.
 ### Monteure und Admins ändern
 
 In [`data.js`](./data.js) die Liste `MONTEURE` bzw. `ADMINS` anpassen.
-Bei `ADMINS` zusätzlich in [`firestore.rules`](./firestore.rules) die Zeile
-`.data.monteur in ['SE', 'KÖ']` anpassen und die Regeln neu veröffentlichen
+Bei `ADMINS` zusätzlich in [`firestore.rules`](./firestore.rules) die Funktionen
+`adminCodes()` und `noPinsYet()` anpassen und die Regeln neu veröffentlichen
 (Schritt 5 unten).
 
 ### Daten der alten Version
@@ -109,6 +127,9 @@ Kennung fürs Gerät, an der Firebase erkennt, ob es zur Werkstatt gehört.
 [`firestore.rules`](./firestore.rules) hineinkopieren → **Veröffentlichen**.
 
 > Ohne diesen Schritt lehnt Firebase jeden Zugriff ab.
+>
+> **Ändert sich `firestore.rules` im Repository** (z. B. mit dem PIN-Schutz),
+> diesen Schritt wiederholen – GitHub veröffentlicht nur die App, nicht die Regeln.
 
 ### 6. Werte bei GitHub eintragen
 
@@ -130,7 +151,7 @@ Jeder Push auf `main` veröffentlicht automatisch neu.
 ### 8. Werkstatt anlegen und Geräte verbinden
 
 1. **Erstes Gerät, als Admin (SE oder KÖ):** App öffnen → bei „Wer bist du?“
-   das eigene Kürzel wählen → **Neue Werkstatt anlegen**. Die Standardvorlagen
+   das eigene Kürzel wählen → PIN zweimal eingeben → **Neue Werkstatt anlegen**. Die Standardvorlagen
    werden dabei übernommen.
 2. Unten in der Seitenleiste auf das eigene Kürzel („Ich bin“) tippen. Im Fenster
    steht unter **Kollegen einladen** der **Werkstatt-Code**; über **Einladen**

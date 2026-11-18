@@ -3,6 +3,13 @@
 
 const K_TPL = 'kds_local_templates';
 const K_PROTO = 'kds_local_protocols';
+const K_PINS = 'kds_local_pins';
+const K_CLAIM = 'kds_local_claim';
+
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+}
 
 function read(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; }
@@ -34,7 +41,20 @@ export function createLocalStore() {
       if (!localStorage.getItem(K_TPL) && templates && Object.keys(templates).length) write(K_TPL, templates);
     },
 
-    async setMe() {},
+    async setMe() { localStorage.removeItem(K_CLAIM); },
+
+    /* PIN-Schutz im Probemodus (nur auf diesem Gerät, ohne echten Schutz) */
+    pinHash(code, pin) { return sha256hex(`kds:local:${code}:${pin}`); },
+    async getPinFlags() { const p = read(K_PINS, {}); return Object.fromEntries(Object.keys(p).map(k => [k, true])); },
+    onPinFlags(cb) { this.getPinFlags().then(cb); return () => {}; },
+    async getClaim() { return read(K_CLAIM, null); },
+    async setPin(code, pin) { const p = read(K_PINS, {}); p[code] = await this.pinHash(code, pin); write(K_PINS, p); },
+    async claimAdmin(code, pin) {
+      const p = read(K_PINS, {});
+      const hash = await this.pinHash(code, pin);
+      if (!p[code] || p[code] !== hash) throw new Error('PIN falsch.');
+      const c = { monteur: code, hash }; write(K_CLAIM, c); return c;
+    },
 
     onTemplates(cb) { tplSubs.add(cb); cb(read(K_TPL, {})); return () => tplSubs.delete(cb); },
 

@@ -536,3 +536,5 @@
 
   /* Versionsstand */
   .build { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--steel-2) }
+  .field input.pin, .field input[id^="setup-pin"] { font-family:'IBM Plex Mono',monospace; letter-spacing:.3em; font-size:20px }
+  .pick code small { font-size:12px }

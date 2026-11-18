@@ -66,7 +66,7 @@ jobs:
           # den Browser eine neue Datei – keine alte Kopie aus irgendeinem Zwischenspeicher.
           V=${GITHUB_SHA::8}
           sed -i -E "s#(src|href)=\"(config\.js|styles\.css|app\.js)\"#\1=\"\2?v=$V\"#g" dist/index.html
-          sed -i -E "s#from '\./(data|store-local)\.js'#from './\1.js?v=$V'#g; s#import\('\./store-firebase\.js'\)#import('./store-firebase.js?v=$V')#g" dist/app.js
+          sed -i -E "s#from '\./(data|store-local)\.js'#from './\1.js?v=$V'#g; s#import\('\./store-firebase\.js'\)#import('./store-firebase.js?v=$V')#g" dist/app.js dist/store-firebase.js
           grep -q "config.js?v=$V" dist/index.html && grep -q "data.js?v=$V" dist/app.js && grep -q "store-firebase.js?v=$V" dist/app.js \
             || { echo "::error::Versionierung der Dateinamen fehlgeschlagen"; exit 1; }
           # Neue Version → Service Worker lädt alle Dateien neu

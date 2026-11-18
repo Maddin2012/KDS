@@ -4,7 +4,7 @@
    bis es mit „Protokoll abschließen“ ins gemeinsame Archiv wandert. */
 
 import {
-  CATEGORIES, MONTEURE, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
+  CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
   emptyDraft, migrateOldData
 } from './data.js';
 import { createLocalStore } from './store-local.js';
@@ -28,8 +28,13 @@ const S = {
   editTpl: null,            // Arbeitskopie im Bearbeitungsmodus
   protocols: [],
   openId: null,
-  renderDeferred: false
+  renderDeferred: false,
+  claim: null,              // Admin-Nachweis dieses Geräts (nur mit richtiger PIN)
+  pinFlags: {}              // für welche Admin-Kürzel eine PIN festgelegt ist
 };
+
+/* Admin-Rechte nur mit gültigem PIN-Nachweis – nicht schon durch das Kürzel */
+const amAdmin = () => isAdmin(S.me) && !!S.claim && S.claim.monteur === S.me;
 
 const tplFor = (cat) => (S.templates[cat] && Array.isArray(S.templates[cat].groups)) ? S.templates[cat] : defaultTemplate(cat);
 const draftKey = (cat) => 'kds_draft_' + cat;
@@ -90,13 +95,13 @@ function renderNav() {
   $('arch-count').textContent = S.protocols.length;
 
   const meBtn = $('btn-me');
-  meBtn.innerHTML = S.me ? esc(monteurLabel(S.me)) + (isAdmin(S.me) ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
+  meBtn.innerHTML = S.me ? esc(monteurLabel(S.me)) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
 
 }
 
 function renderChrome() {
   const mode = S.view === 'list' ? (S.edit ? 'edit' : 'list') : S.view;
-  const admin = isAdmin(S.me);
+  const admin = amAdmin();
   document.querySelectorAll('#hero-actions [data-show]').forEach(b => {
     const tokens = b.dataset.show.split(' ');
     const show = tokens.includes(mode) && (!tokens.includes('admin') || admin);
@@ -414,7 +419,7 @@ function renderProtocol() {
   applyHeader(p.header || {});
   const at = new Date(p.ts || 0);
   $('proto-info').innerHTML = `<b>${esc((p.header && p.header.fId) || '—')}</b> · ${esc(p.category)} · abgeschlossen von ${esc(monteurLabel(p.closedBy || '?'))} am ${esc(at.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}`;
-  $('btn-del-proto').classList.toggle('hidden', !isAdmin(S.me));
+  $('btn-del-proto').classList.toggle('hidden', !amAdmin());
   const chk = (v) => `<input type="checkbox" class="chk-view" ${v ? 'checked' : ''} tabindex="-1" aria-readonly="true">`;
   $('proto-groups').innerHTML = (p.groups || []).map(g => `
     <div class="box">
@@ -440,15 +445,24 @@ function renderProtocol() {
 function mePickerHtml(sel) {
   return `<div class="pick-grid">${MONTEURE.map(m => `
     <button type="button" class="pick ${m.code === sel ? 'sel' : ''}" data-code="${esc(m.code)}">
-      <code>${esc(m.code)}</code><span>${esc(m.name)}</span>
+      <code>${esc(m.code)}${isAdmin(m.code) ? ' <small title="mit PIN">🔒</small>' : ''}</code><span>${esc(m.name)}</span>
     </button>`).join('')}</div>`;
 }
 
+/* „Ich bin“ für Nicht-Admins (Admins nur über PIN, siehe pickMe) */
 function setMe(code) {
   S.me = code;
+  S.claim = null;
   lsSet('kds_me', code);
   if (S.store) S.store.setMe(code).catch(() => {});
-  if (S.edit && !isAdmin(code)) { flushTemplateSave(); S.edit = false; }
+  if (S.edit) { flushTemplateSave(); S.edit = false; }
+  render();
+}
+
+function setAdminMe(code, claim) {
+  S.me = code;
+  S.claim = claim;
+  lsSet('kds_me', code);
   render();
 }
 
@@ -467,25 +481,121 @@ function inviteHtml() {
     </div>`;
 }
 
-/* Auswahl „Ich bin“ als Dialog */
-function pickMe(allowCancel = true) {
+const PIN_RE = /^\d{4,12}$/;
+const cardHead = '<div class="wm"><span class="bar"></span><span class="txt">Krandienst <em>Schulz</em></span></div>';
+
+/* PIN-Formular. mode: enter = anmelden · first = allererste PIN festlegen ·
+   admin = Admin legt PIN fest/ändert sie · missing = für dieses Kürzel gibt es noch keine PIN */
+function pinFormHtml(code, mode) {
+  const name = monteurLabel(code);
+  if (mode === 'missing') {
+    return `<h3>${esc(name)} 🔒</h3>
+      <p>Für ${esc(code)} ist noch keine PIN festgelegt. Ein Admin kann sie unter „Ich bin“ → „Admin-PINs“ festlegen. Bis dahin bitte ein anderes Kürzel wählen.</p>
+      <div class="setup-back"><button class="link-btn" data-x="back" type="button">← Zurück</button></div>`;
+  }
+  const two = mode !== 'enter';
+  const title = mode === 'enter' ? `PIN für ${code}` : (mode === 'admin' && S.pinFlags[code]) ? `Neue PIN für ${code}` : `PIN für ${code} festlegen`;
+  const hint = mode === 'enter' ? `${name} ist Admin. Bitte PIN eingeben.`
+    : mode === 'first' ? 'Mindestens 4 Ziffern. Die PIN wird nirgends im Klartext gespeichert – gut merken.'
+    : S.pinFlags[code] ? 'Mindestens 4 Ziffern. Geräte, die mit der alten PIN angemeldet sind, verlieren dabei ihre Admin-Rechte.'
+    : 'Mindestens 4 Ziffern. Danach kann sich ' + name + ' mit dieser PIN anmelden.';
+  return `<h3>${esc(title)}</h3><p>${esc(hint)}</p>
+    <form id="pin-form" autocomplete="off" novalidate>
+      <div class="field"><label for="pin1">PIN</label>
+        <input id="pin1" class="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="${two ? 'new-password' : 'current-password'}"></div>
+      ${two ? `<div class="field"><label for="pin2">PIN wiederholen</label>
+        <input id="pin2" class="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password"></div>` : ''}
+      <button class="btn-big" type="submit">${mode === 'enter' ? 'Anmelden' : 'PIN speichern'}</button>
+      <div class="setup-err" id="pin-err"></div>
+    </form>
+    <div class="setup-back"><button class="link-btn" data-x="back" type="button">← Zurück</button></div>`;
+}
+
+function adminPinsHtml() {
+  if (!amAdmin()) return '';
+  return `
+    <div class="invite-box">
+      <h3>Admin-PINs</h3>
+      <p>PINs für die Admins festlegen oder ändern.</p>
+      <div class="invite-row" style="justify-content:flex-start">
+        ${ADMINS.map(c => `<button class="btn-sec" data-pin="${esc(c)}" type="button">${S.pinFlags[c] ? 'PIN ändern' : 'PIN festlegen'}: ${esc(c)}</button>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* Auswahl „Ich bin“ als Dialog – Admins (SE, KÖ) nur mit PIN */
+function pickMe(allowCancel = true, notice = '') {
   return new Promise(resolve => {
     const ov = $('setup');
-    ov.innerHTML = `
-      <div class="setup-card">
-        <div class="wm"><span class="bar"></span><span class="txt">Krandienst <em>Schulz</em></span></div>
+    let pinCtx = null;
+    const shell = (inner) => { ov.innerHTML = `<div class="setup-card">${cardHead}${inner}</div>`; ov.classList.remove('hidden'); };
+    const close = (v) => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; resolve(v); };
+    const showPicker = () => {
+      pinCtx = null;
+      shell(`
+        ${notice ? `<p class="setup-err">${esc(notice)}</p>` : ''}
         <h3>Wer bist du?</h3>
-        <p>Gilt für dieses Gerät. Im Archiv steht dann, wer ein Protokoll abgeschlossen hat.</p>
+        <p>Gilt für dieses Gerät. Im Archiv steht dann, wer ein Protokoll abgeschlossen hat. 🔒 = nur mit PIN.</p>
         ${mePickerHtml(S.me)}
+        ${adminPinsHtml()}
         ${inviteHtml()}
-        ${allowCancel ? '<div class="setup-back"><button class="link-btn" data-x="cancel" type="button">Schließen</button></div>' : ''}
-      </div>`;
-    ov.classList.remove('hidden');
-    ov.onclick = (e) => {
+        ${allowCancel ? '<div class="setup-back"><button class="link-btn" data-x="cancel" type="button">Schließen</button></div>' : ''}`);
+    };
+    const showPin = (code, mode) => {
+      pinCtx = { code, mode };
+      shell(pinFormHtml(code, mode));
+      const i = $('pin1'); if (i) i.focus();
+    };
+    showPicker();
+
+    ov.onclick = async (e) => {
       if (e.target.closest('[data-x="invite"]')) { invite(); return; }
+      if (e.target.closest('[data-x="back"]')) { showPicker(); return; }
+      if (e.target.closest('[data-x="cancel"]')) { close(null); return; }
+      const ap = e.target.closest('[data-pin]');
+      if (ap) { showPin(ap.dataset.pin, 'admin'); return; }
       const b = e.target.closest('.pick');
-      if (b) { ov.classList.add('hidden'); ov.onclick = null; setMe(b.dataset.code); resolve(b.dataset.code); }
-      else if (e.target.closest('[data-x="cancel"]')) { ov.classList.add('hidden'); ov.onclick = null; resolve(null); }
+      if (!b) return;
+      const code = b.dataset.code;
+      if (!isAdmin(code)) { setMe(code); close(code); return; }
+      if (amAdmin() && S.me === code) { close(code); return; }
+      let flags = S.pinFlags;
+      try { flags = await S.store.getPinFlags(); S.pinFlags = flags; } catch (err) { /* offline: bekannter Stand */ }
+      if (flags[code]) showPin(code, 'enter');
+      else if (!Object.keys(flags).length) showPin(code, 'first');
+      else showPin(code, 'missing');
+    };
+
+    ov.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!pinCtx) return;
+      const { code, mode } = pinCtx;
+      const p1 = $('pin1').value.trim(), p2 = $('pin2') ? $('pin2').value.trim() : p1;
+      const err = $('pin-err'), btn = ov.querySelector('#pin-form button[type="submit"]');
+      if (!PIN_RE.test(p1)) { err.textContent = 'Die PIN besteht aus 4 bis 12 Ziffern.'; return; }
+      if (p1 !== p2) { err.textContent = 'Die beiden Eingaben stimmen nicht überein.'; return; }
+      btn.disabled = true; err.textContent = 'Wird geprüft …';
+      try {
+        if (mode === 'first' || mode === 'admin') {
+          await S.store.setPin(code, p1);
+          S.pinFlags = { ...S.pinFlags, [code]: true };
+        }
+        if (mode === 'enter' || mode === 'first' || (mode === 'admin' && code === S.me)) {
+          const claim = await S.store.claimAdmin(code, p1);
+          setAdminMe(code, claim);
+          showToast(mode === 'enter' ? `Angemeldet als ${code}` : `PIN für ${code} gespeichert`);
+          close(code);
+          return;
+        }
+        showToast(`PIN für ${code} gespeichert`);
+        showPicker();
+      } catch (ex) {
+        console.error(ex);
+        err.textContent = (ex && ex.message) || 'Das hat nicht geklappt.';
+        btn.disabled = false;
+        $('pin1').value = ''; if ($('pin2')) $('pin2').value = '';
+        $('pin1').focus();
+      }
     };
   });
 }
@@ -504,6 +614,15 @@ function runSetup(message) {
           <h3>1. Wer bist du?</h3>
           <p>Gilt für dieses Gerät. Admins (${esc('SE, KÖ')}) dürfen Vorlagen ändern.</p>
           ${mePickerHtml(me)}
+          ${isAdmin(me) ? `
+          <div class="field" style="margin-top:12px">
+            <label for="setup-pin1">PIN für ${esc(me)} 🔒</label>
+            <input id="setup-pin1" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="setup-pin2">PIN wiederholen – nur bei „Neue Werkstatt anlegen“</label>
+            <input id="setup-pin2" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+          </div>` : ''}
           <h3 style="margin-top:22px">2. Werkstatt beitreten</h3>
           <p>Den 16-stelligen Code bekommst du von einem Kollegen (Seitenleiste → „Einladen“).</p>
           <div class="field">
@@ -534,10 +653,18 @@ function runSetup(message) {
         grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
+      let pin = '';
+      if (isAdmin(me)) {
+        pin = $('setup-pin1').value.trim();
+        const pin2 = $('setup-pin2').value.trim();
+        if (!PIN_RE.test(pin)) { $('setup-err').textContent = `Bitte die PIN für ${me} eingeben (4 bis 12 Ziffern).`; $('setup-pin1').focus(); return; }
+        if (x.dataset.x === 'create' && pin !== pin2) { $('setup-err').textContent = 'Die beiden PIN-Eingaben stimmen nicht überein.'; $('setup-pin2').focus(); return; }
+      }
       busy(true);
+      $('setup-err').textContent = '';
       try {
         if (x.dataset.x === 'join') {
-          await S.store.joinWorkshop($('join-code').value, me);
+          await S.store.joinWorkshop($('join-code').value, me, pin);
         } else {
           let seed = null;
           if (isAdmin(me)) {
@@ -545,9 +672,10 @@ function runSetup(message) {
             const mig = lsJson('kds_migrated_templates', {}) || {};
             CATEGORIES.forEach(c => { seed[c] = mig[c] || defaultTemplate(c); });
           }
-          await S.store.createWorkshop('Krandienst Schulz', me, seed);
+          await S.store.createWorkshop('Krandienst Schulz', me, seed, pin);
         }
         S.me = me; lsSet('kds_me', me);
+        if (isAdmin(me)) { S.claim = await S.store.getClaim(); S.pinFlags = await S.store.getPinFlags(); }
         if (urlCode) history.replaceState(null, '', location.pathname);
         ov.classList.add('hidden'); ov.onclick = null;
         resolve();
@@ -682,7 +810,7 @@ const actions = {
   },
   'close-protocol': closeProtocol,
   'edit-template': () => {
-    if (!isAdmin(S.me)) return;
+    if (!amAdmin()) return;
     S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); render();
   },
   'done-template': () => {
@@ -730,7 +858,7 @@ const actions = {
   'back-archive': () => { S.view = 'archive'; S.openId = null; render(); },
   'delete-protocol': async () => {
     const p = S.protocols.find(x => x.id === S.openId);
-    if (!p || !isAdmin(S.me)) return;
+    if (!p || !amAdmin()) return;
     if (!(await confirmModal(`Protokoll „${(p.header && p.header.fId) || ''}“ vom ${fmtDate(p)} endgültig löschen?`, 'Löschen'))) return;
     try { await S.store.deleteProtocol(p.id); S.view = 'archive'; S.openId = null; render(); showToast('Protokoll gelöscht'); }
     catch (e) { showToast('Löschen fehlgeschlagen'); }
@@ -912,8 +1040,17 @@ async function start() {
     $('arch-count').textContent = list.length;
   });
 
+  S.store.onPinFlags((flags) => { S.pinFlags = flags; });
+  S.claim = await S.store.getClaim();
+  // Admin-Kürzel ohne gültigen PIN-Nachweis (z. B. nach dem Update auf PIN-Schutz)
+  if (isAdmin(S.me) && !amAdmin()) {
+    const was = S.me;
+    S.me = ''; lsSet('kds_me', '');
+    render();
+    await pickMe(false, `${was} ist jetzt mit PIN geschützt. Tippe auf ${was}, um dich anzumelden.`);
+  }
   if (!S.me) await pickMe(false);
-  if (S.store.mode === 'cloud' && S.me) S.store.setMe(S.me).catch(() => {});
+  if (S.store.mode === 'cloud' && S.me && !isAdmin(S.me)) S.store.setMe(S.me).catch(() => {});
   render();
 }
 

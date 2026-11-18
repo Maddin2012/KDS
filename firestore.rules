@@ -7,7 +7,12 @@ rules_version = '2';
 // beitreten; wer nicht Mitglied ist, sieht nichts.
 //
 // „Ich bin“: Jedes Gerät trägt unter members/{uid} sein Monteur-Kürzel ein.
-// Admins (SE, KÖ) dürfen Vorlagen ändern und Protokolle löschen.
+// Admins (SE, KÖ) dürfen Vorlagen ändern und Protokolle löschen – aber nur mit
+// gültiger PIN. Die PIN steht nirgends im Code: In pins/{Kürzel} liegt nur ein
+// Prüfwert (SHA-256 aus Werkstatt-Code, Kürzel und PIN), den kein Gerät lesen
+// kann. Wer die PIN kennt, kann denselben Wert berechnen und damit unter
+// adminClaims/{uid} einen Admin-Nachweis anlegen; die Regeln vergleichen ihn
+// serverseitig mit pins/{Kürzel}.
 // ADMINS muss mit data.js übereinstimmen.
 
 service cloud.firestore {
@@ -23,10 +28,29 @@ service cloud.firestore {
              .data.members[request.auth.uid] == true;
     }
 
+    function adminCodes() {
+      return ['SE', 'KÖ'];
+    }
+
+
+    // Gültiger Admin-Nachweis: Prüfwert stimmt mit der aktuellen PIN überein.
+    // Wird eine PIN geändert, verlieren alte Nachweise sofort ihre Wirkung.
+    function claimValid(wid, claim) {
+      return claim.monteur in adminCodes()
+        && exists(/databases/$(database)/documents/workshops/$(wid)/pins/$(claim.monteur))
+        && claim.hash == get(/databases/$(database)/documents/workshops/$(wid)/pins/$(claim.monteur)).data.hash;
+    }
+
     function isAdmin(wid) {
       return isMember(wid)
-        && get(/databases/$(database)/documents/workshops/$(wid)/members/$(request.auth.uid))
-             .data.monteur in ['SE', 'KÖ'];
+        && exists(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(request.auth.uid))
+        && claimValid(wid, get(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(request.auth.uid)).data);
+    }
+
+    // Allererste PIN einer Werkstatt: nur solange noch keine einzige gesetzt ist.
+    function noPinsYet(wid) {
+      return !exists(/databases/$(database)/documents/workshops/$(wid)/pins/$('SE'))
+        && !exists(/databases/$(database)/documents/workshops/$(wid)/pins/$('KÖ'));
     }
 
     // Beitritt: Nur das Feld `members` und darin nur der eigene Eintrag.
@@ -50,10 +74,45 @@ service cloud.firestore {
       allow update: if isMember(wid) || isSelfJoin();
       allow delete: if false;
 
-      // „Ich bin“ je Gerät: lesen dürfen alle Mitglieder, schreiben nur den eigenen Eintrag.
+      // „Ich bin“ je Gerät: lesen dürfen alle Mitglieder, schreiben nur den eigenen
+      // Eintrag. Ein Admin-Kürzel nur mit gültigem Admin-Nachweis (gleiche Sammelbuchung).
       match /members/{uid} {
         allow read: if isMember(wid);
-        allow write: if isMember(wid) && request.auth.uid == uid;
+        allow delete: if isMember(wid) && request.auth.uid == uid;
+        allow create, update: if isMember(wid) && request.auth.uid == uid
+          && (!(request.resource.data.monteur in adminCodes())
+              || (existsAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid))
+                  && getAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid)).data.monteur
+                       == request.resource.data.monteur
+                  && claimValid(wid, getAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid)).data)));
+      }
+
+      // PIN-Prüfwerte: für niemanden lesbar. Setzen/ändern nur Admins;
+      // die allererste PIN darf jedes Mitglied setzen (Einrichtung).
+      match /pins/{code} {
+        allow read: if false;
+        allow create, update: if isMember(wid) && code in adminCodes()
+          && request.resource.data.keys().hasOnly(['hash'])
+          && request.resource.data.hash is string && request.resource.data.hash.size() == 64
+          && (isAdmin(wid) || noPinsYet(wid));
+        allow delete: if isAdmin(wid);
+      }
+
+      // Öffentlicher Hinweis „für dieses Kürzel gibt es eine PIN“ (ohne Prüfwert),
+      // damit die App weiß, ob sie nach der PIN fragt oder sie festlegen lässt.
+      match /pinFlags/{code} {
+        allow read: if isMember(wid);
+        allow create, update: if isMember(wid) && code in adminCodes()
+          && existsAfter(/databases/$(database)/documents/workshops/$(wid)/pins/$(code));
+        allow delete: if isAdmin(wid);
+      }
+
+      // Admin-Nachweis je Gerät: nur das eigene Gerät, nur mit richtiger PIN.
+      match /adminClaims/{uid} {
+        allow read, delete: if isMember(wid) && request.auth.uid == uid;
+        allow create, update: if isMember(wid) && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['monteur', 'hash'])
+          && claimValid(wid, request.resource.data);
       }
 
       // Vorlagen: lesen alle Mitglieder, ändern nur Admins.

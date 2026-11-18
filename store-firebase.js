@@ -9,8 +9,9 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
-  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites
+  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs
 } from './vendor/firebase/firebase-firestore.js';
+import { ADMINS } from './data.js';
 
 const K_WS = 'kds_workshop';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne 0/O, 1/I
@@ -20,6 +21,17 @@ function randomCode() {
   crypto.getRandomValues(a);
   return Array.from(a, b => CODE_CHARS[b % CODE_CHARS.length]).join('');
 }
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function withTimeout(promise, ms, msg) {
+  let t;
+  return Promise.race([promise, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(msg)), ms); })])
+    .finally(() => clearTimeout(t));
+}
+
 export function normalizeCode(c) {
   return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -58,9 +70,12 @@ export function createCloudStore(cfg) {
   function track(promise) {
     pending++; emitSync();
     waitForPendingWrites(db).then(() => { pending = 0; emitSync(); }).catch(() => {});
-    return promise.catch(err => { pending = Math.max(0, pending - 1); emitSync(); handleErr(err); throw err; });
+    // Abgelehnte Schreibvorgänge (z. B. fehlende Admin-Rechte) sind KEIN Zugriffsverlust
+    return promise.catch(err => { pending = Math.max(0, pending - 1); emitSync(); console.error(err); throw err; });
   }
 
+  /* Nur für die Hauptlisten (Vorlagen, Archiv): Werden die abgelehnt, ist das Gerät
+     nicht mehr Mitglied der Werkstatt. Andere Ablehnungen melden das Gerät nicht ab. */
   function handleErr(err) {
     console.error(err);
     if (err && err.code === 'permission-denied') lostSubs.forEach(cb => cb(err));
@@ -86,13 +101,19 @@ export function createCloudStore(cfg) {
       return { ready: !!wid };
     },
 
-    async createWorkshop(name, me, templates) {
+    async createWorkshop(name, me, templates, pin) {
       const code = randomCode();
       await setDoc(doc(db, 'workshops', code), {
         name: name || 'Werkstatt', members: { [uid]: true }, createdAt: serverTimestamp()
       });
       wid = code;
-      await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
+      if (ADMINS.includes(me)) {
+        await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: '', updatedAt: serverTimestamp() });
+        await this.setPin(me, pin);
+        await this.claimAdmin(me, pin);
+      } else {
+        await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
+      }
       if (templates) {
         for (const [cat, tpl] of Object.entries(templates)) {
           await setDoc(doc(db, 'workshops', code, 'templates', cat),
@@ -103,7 +124,7 @@ export function createCloudStore(cfg) {
       return code;
     },
 
-    async joinWorkshop(rawCode, me) {
+    async joinWorkshop(rawCode, me, pin) {
       const code = normalizeCode(rawCode);
       if (code.length !== 16) throw new Error('Der Code hat 16 Zeichen.');
       let snap;
@@ -114,16 +135,80 @@ export function createCloudStore(cfg) {
         await updateDoc(doc(db, 'workshops', code), { ['members.' + uid]: true });
       }
       wid = code;
-      await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
-      localStorage.setItem(K_WS, code);
+      if (ADMINS.includes(me)) {
+        await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: '', updatedAt: serverTimestamp() });
+        localStorage.setItem(K_WS, code);
+        const flags = await this.getPinFlags();
+        if (!flags[me]) throw new Error(`Für ${me} ist noch keine PIN festgelegt. Wähle vorerst ein anderes Kürzel.`);
+        await this.claimAdmin(me, pin);
+      } else {
+        await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
+        localStorage.setItem(K_WS, code);
+      }
       return code;
+    },
+
+    /* ---------- PIN-Schutz für Admins ---------- */
+    pinHash(code, pin) { return sha256hex(`kds:${wid}:${code}:${pin}`); },
+
+    async getPinFlags() {
+      const qs = await getDocs(sub('pinFlags'));
+      const out = {};
+      qs.forEach(d => { out[d.id] = true; });
+      return out;
+    },
+
+    onPinFlags(cb) {
+      return onSnapshot(sub('pinFlags'), (qs) => {
+        const out = {};
+        qs.forEach(d => { out[d.id] = true; });
+        cb(out);
+      }, (err) => console.error(err));   // z. B. alte Firebase-Regeln: kein Zugriffsverlust
+    },
+
+    async getClaim() {
+      try { const d = await getDoc(doc(db, 'workshops', wid, 'adminClaims', uid)); return d.exists() ? d.data() : null; }
+      catch (e) { return null; }
+    },
+
+    /* PIN festlegen oder ändern (Admin, oder allererste PIN der Werkstatt) */
+    async setPin(code, pin) {
+      if (!navigator.onLine) throw new Error('Zum Festlegen der PIN wird Internet gebraucht.');
+      const hash = await this.pinHash(code, pin);
+      const b = writeBatch(db);
+      b.set(doc(db, 'workshops', wid, 'pins', code), { hash });
+      b.set(doc(db, 'workshops', wid, 'pinFlags', code), { set: true, at: serverTimestamp() });
+      try { await withTimeout(b.commit(), 15000, 'Keine Verbindung zur Datenbank.'); }
+      catch (e) {
+        if (e && e.code === 'permission-denied') throw new Error('PIN konnte nicht gespeichert werden (keine Berechtigung). Sind die Firebase-Regeln aktuell?');
+        throw e;
+      }
+    },
+
+    /* Mit PIN als Admin nachweisen – die Datenbank-Regeln prüfen den Wert */
+    async claimAdmin(code, pin) {
+      if (!navigator.onLine) throw new Error('Zur Prüfung der PIN wird Internet gebraucht.');
+      const hash = await this.pinHash(code, pin);
+      const b = writeBatch(db);
+      b.set(doc(db, 'workshops', wid, 'adminClaims', uid), { monteur: code, hash });
+      b.set(doc(db, 'workshops', wid, 'members', uid), { monteur: code, updatedAt: serverTimestamp() });
+      try { await withTimeout(b.commit(), 15000, 'Keine Verbindung zur Datenbank.'); }
+      catch (e) {
+        if (e && e.code === 'permission-denied') throw new Error('PIN falsch.');
+        throw e;
+      }
+      return { monteur: code, hash };
     },
 
     leave() { localStorage.removeItem(K_WS); wid = null; },
 
+    /* „Ich bin“ für Nicht-Admins; ein vorhandener Admin-Nachweis wird dabei entfernt */
     setMe(me) {
       if (!wid) return Promise.resolve();
-      return track(setDoc(doc(db, 'workshops', wid, 'members', uid), { monteur: me, updatedAt: serverTimestamp() }));
+      const b = writeBatch(db);
+      b.set(doc(db, 'workshops', wid, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
+      b.delete(doc(db, 'workshops', wid, 'adminClaims', uid));
+      return track(b.commit());
     },
 
     onTemplates(cb) {
