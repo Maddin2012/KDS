@@ -36,10 +36,15 @@ self.addEventListener('fetch', (e) => {
   }
   if (url.origin !== self.location.origin) return;
 
-  // Eigene Dateien: erst Netz (damit Updates sofort ankommen), sonst Speicher
+  // Eigene Dateien: erst Netz (damit Updates sofort ankommen), sonst Speicher.
+  // cache: 'no-cache' → Browser fragt beim Server nach, statt eine bis zu
+  // 10 Minuten alte Kopie aus dem HTTP-Zwischenspeicher von GitHub Pages zu nehmen.
   e.respondWith((async () => {
     try {
-      const res = await fetch(req);
+      // Seitenaufrufe (mode: navigate) dürfen nicht mit Optionen kopiert werden → per URL laden
+      const res = req.mode === 'navigate'
+        ? await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+        : await fetch(req, { cache: 'no-cache' });
       if (res.ok) { const c = await caches.open(VERSION); c.put(req, res.clone()); }
       return res;
     } catch (err) {

@@ -62,6 +62,13 @@ jobs:
           fi
           # Versionsstand für die Anzeige in der App (Seitenleiste unten)
           echo "window.KDS_BUILD = { sha: \"${GITHUB_SHA::7}\", time: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" };" >> dist/config.js
+          # Dateinamen mit Version versehen (config.js?v=…): Jede Veröffentlichung ist für
+          # den Browser eine neue Datei – keine alte Kopie aus irgendeinem Zwischenspeicher.
+          V=${GITHUB_SHA::8}
+          sed -i -E "s#(src|href)=\"(config\.js|styles\.css|app\.js)\"#\1=\"\2?v=$V\"#g" dist/index.html
+          sed -i -E "s#from '\./(data|store-local)\.js'#from './\1.js?v=$V'#g; s#import\('\./store-firebase\.js'\)#import('./store-firebase.js?v=$V')#g" dist/app.js
+          grep -q "config.js?v=$V" dist/index.html && grep -q "data.js?v=$V" dist/app.js && grep -q "store-firebase.js?v=$V" dist/app.js \
+            || { echo "::error::Versionierung der Dateinamen fehlgeschlagen"; exit 1; }
           # Neue Version → Service Worker lädt alle Dateien neu
           sed -i "s/const VERSION = 'kds-v1';/const VERSION = 'kds-${GITHUB_SHA::8}';/" dist/sw.js
 
