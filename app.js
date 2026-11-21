@@ -327,12 +327,14 @@ function buildProtocol() {
     .filter(g => !draft.off[g.id])
     .map(g => ({
       title: g.title,
+      header: g.items.length === 0,          // absichtlich leere Gruppe = Zwischenüberschrift (z. B. „Service UW“)
       items: g.items.filter(i => !draft.off[i.id]).map(i => {
         const st = draft.status[i.id] || {};
         return { text: i.text, note: draft.notes[i.id] || '', io: !!st.io, nio: !!st.nio, beh: !!st.beh };
       })
     }))
-    .filter(g => g.items.length);
+    .filter(g => g.items.length || g.header)   // ganz abgewählte Gruppen fallen weg, Überschriften bleiben
+    .map(({ header, ...g }) => g);
   return {
     category: S.cat,
     header: { ...draft.header },

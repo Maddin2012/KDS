@@ -22,27 +22,67 @@ export const monteurLabel = (code) => {
   return m ? m.code + ' – ' + m.name : code;
 };
 
+/* Standardvorlagen – übernommen aus dem Stand der Werkstatt (alte Serviceliste,
+   Export vom 21.11.2026). „Standardvorlage laden“ setzt eine Kategorie hierauf zurück. */
 const DEFAULTS = {
-  PKW: [
-    { title: 'Service / Inspektion PKW', items: ['Motoröl & Ölfilter wechseln', 'Innenraumfilter & Luftfilter prüfen', 'Bremsanlage, Beläge & Scheiben prüfen', 'Flüssigkeitsstände (Kühlwasser, Wischwasser, Bremsflüssigkeit)'] },
-    { title: 'Elektrik & Sicherheit', items: ['Beleuchtung Vorne & Hinten prüfen', 'Scheibenwaschanlage & Wischerblätter', 'Reifenfülldruck & Profiltiefe kontrollieren'] }
-  ],
-  LKW: [
-    { title: 'Service LKW Fahrgestell', items: ['Motoröl- & Kraftstofffilter wechseln', 'Druckluftanlage entwässern & prüfen', 'Bremsanlage & Lenkgestänge prüfen', 'Gelenkwellen & Abschmierpunkte abschmieren'] },
-    { title: 'Sicherheitsprüfung & Licht', items: ['Beleuchtung & Kontrollleuchten prüfen', 'Sicherheitsprüfung (SP) Vorbereitung', 'Reifenzustand & Radmuttern-Drehmoment'] }
-  ],
-  Ladekran: [
-    { title: 'Service Ladekran Hydraulik', items: ['Hydraulikölstand & Filter prüfen', 'Hydraulikschläuche & Leitungen auf Dichtigkeit testen', 'Abstützung & Verriegelung kontrollieren', 'Schmierstellen am Kranarm abschmieren'] },
-    { title: 'Kranmechanik & Sicherheit', items: ['Hub-, Knick- & Teleskopzylinder prüfen', 'Not-Aus & Sicherheitsabschaltung testen', 'Haken & Seilaufnahme kontrollieren'] }
-  ],
   BF3: [
-    { title: 'BF3 Begleitfahrzeug Ausstattung', items: ['Wechselverkehrszeichenanlage (WVZ) Funktionstest', 'Funkanlage & Telematik prüfen', 'Rundumkennleuchten & Zusatzbeleuchtung testen', 'Höhenmesslatte & Ausrüstung Vollständigkeit'] },
-    { title: 'Fahrzeug-Check', items: ['Licht- und Signalanlage prüfen', 'Sicherheitsausrüstung (Lübeck-Hütchen, Anhaltewinkerkelle)', 'Bremsen & Reifen kontrollieren'] }
+    { title: "KAbine", items: ["Türschlösser schmieren", "Schließzylinder schmieren", "Türscharniere und Fangband schmieren", "Fensterheber prüfen", "Scheibenwischer prüfen", "Scheibenreinigungsanlage auffüllen", "Spritzdüsen prüfen ggf. einstellen", "Signalhorn prüfen", "Spiegelverstellung prüfen", "Innenraumfilter ern.", "Fehlerkeller auslesen/löschen", "Service zurück setzen"] },
+    { title: "Elektrik Beleuchtung", items: ["Beleuchtung Vorne", "Beleuchtung Hinten", "Beleuchtung Seite"] },
+    { title: "Wechselverkehrszeichenanlage (WVZ)", items: ["WVZ Funktionstest aller Zeichen", "Aufstellmechanismus prüfen", "Führungsschienen schmieren", "Notentriegelung auf richtigen Sitz prüfen (Sicherungssplint)"] },
+    { title: "Ausrüstung BF3", items: ["5x Leitkegel", "4x Warndreieck", "4x Bltizleuchten", "2x Signalfahnen", "1x Höhenmessgerät", "1x Stahlmaßband", "Warnweste pro Insasse"] },
+    { title: "Bereifung", items: ["Reifenfülldruck prüfen", "Reifenfülldruck Reserverad prüfen falls vorhanden", "Reifen auf Verschleiß prüfen"] },
+    { title: "Fahrwehrk Achsen", items: ["Spurstangen prüfen", "Stoßdämpfer/Feder Sichtprüfung", "Stoßdämpfer HA Anschlagpuffer prüfen", "Stabibuchsen prüfen", "Koppelstangen prüfen", "Traggelenk prüfen", "Querlenker prüfen", "Antriebswellenmanchetten prüfen", "Radlager prüfen", "Bremse prüfen", "Bremsleitungen prüfen", "Bremsflüssigkeit ern."] },
+    { title: "Motor", items: ["Motor auf Undichtigkeit prüfen", "Motoröl ern.", "Motorölfilter ern.", "Kraftstofffilter ern.", "Luftfiltereinsatz ern.", "Kühlwasserstand prüfen", "Kühlwasser ausspindeln", "Kühlsystem auf Undichtigkeit prüfen", "Riementrieb prüfen", "Abgasanlage prüfen / Aufhängung"] },
+    { title: "Getriebe", items: ["Getriebe auf Dichtheit prüfen", "Getriebeöl ern."] }
   ],
   Kran: [
-    { title: 'Service UW (Unterwagen)', items: ['Service UW zurücksetzen', 'Motoröl & Filter Unterwagen', 'Getriebe- & Achsölstände prüfen', 'Lenksystem & Achsen abschmieren'] },
-    { title: 'Service OW (Oberwagen)', items: ['Service OW zurücksetzen', 'Motoröl & Filter Oberwagen', 'Drehkranz & Schmierung prüfen', 'Hydraulikanlage Oberwagen'] },
-    { title: 'Elektrik / Beleuchtung', items: ['Beleuchtung Vorne & Hinten prüfen', 'Arbeitsscheinwerfer & Auslegerbeleuchtung', 'Warn- & Lichtleisten testen'] }
+    { title: "Service UW", items: [] },
+    { title: "KAbine", items: ["Türschlösser schmieren", "Schließzylinder schmieren", "Türscharniere und Fangband schmieren", "Fensterheber prüfen", "Scheibenwischer prüfen", "Scheibenreinigungsanlage auffüllen", "Spritzdüsen prüfen ggf. einstellen", "Signalhorn prüfen", "Spiegelverstellung prüfen", "Innenraumfilter ern."] },
+    { title: "Elektrik Beleuchtung", items: ["Beleuchtung Vorne", "Beleuchtung Hinten", "Beleuchtung Seite", "Arbeitsscheinwerfer Abstützung", "Arbeitsscheinwerfer Ausleger"] },
+    { title: "Standheizung", items: ["Standheizung auf Funktion prüfen", "Kühlwasserschläuche prüfen", "Kraftstofffilter ern."] },
+    { title: "Zentralschmieranlage UW", items: ["Zentralschmieranlage befüllen", "Notschmierung auslösen"] },
+    { title: "Bereifung", items: ["Reifenfülldruck prüfen / außer bei RDKS", "Reifen auf Verschleiß prüfen"] },
+    { title: "Fahrwehrk Achsen", items: ["Zustand / Belagstärke Bremse prüfen", "Lenk / Spur / Schubstangen prüfen", "Lenkzylinder prüfen", "Achsstreben prüfen", "Hydraulikschläuche Lenkzylinder prüfen", "Federungszylinder Sichtprüfung", "Kardanwelle Verschraubung prüfen", "Achsen auf Undichtigkeit prüfen", "Radnabe Außenplaneten Ölwechsel", "Differentiale Ölwechsel", "Verteilergetriebe Ölwechsel", "Achsschenkel Schmieren"] },
+    { title: "Motor", items: ["Motor auf Undichtigkeit prüfen", "Motoröl ern.", "Motorölfilter ern.", "Kraftstofffilter ern.", "Lufttrocknerpatrone ern.", "Luftfiltereinsatz ern.", "Kühlwasserstand prüfen", "Kühlwasser ausspindeln", "Kühlsystem auf Undichtigkeit prüfen", "Kurbelgehäuseentlüftung ern.", "Riementrieb prüfen"] },
+    { title: "Fahrgetriebe", items: ["Fahrgetriebe Ölwechsel", "Kardanwelle Verschraubungen prüfen", "Getriebe auf Undichtigkeit prüfen", "Nasskupplung Ölwechsel", "Wandlerkupplung Ölwechsel"] },
+    { title: "Hydraulik", items: ["Sichtprüfung Hydraulikschläuche", "Rücklauf-Filterelemente Hydrauliktank ern.", "Belüftung-/Entlüftungsfilter ern.", "Hochdruckfilterelement ern.", "Hydraulikölstand  prüfen"] },
+    { title: "Abstützung", items: ["Schiebeholme Ausfahrverhalten prüfen ggf einstellen", "Schiebeholme auf Beschädigungen prüfen", "Schiebeholme Gleitflächen schmieren", "Hydraulikleitung Abstützzylinder auf Beschädigung prüfen", "Abstützzylinder Kolbenstange auf Beschädigung prüfen", "Gleitflächen Abtstützteller schmieren"] },
+    { title: "Membranspeicher", items: ["Fahrwerk", "HA Lenkung"] },
+    { title: "Service OW", items: [] },
+    { title: "Membranspeicher", items: ["Ballast", "Drehwerk", "Televerbolzung", "Klappspitze", "Speisedruck"] },
+    { title: "Gewerke", items: ["Drehwerk Ölwechsel                    Alle 4 Jahre / 4000h", "Hubwerk Ölwechsel                     Alle 4 Jahre / 4000h", "Winkelgetriebe                               Alle 2000h", "Pumpenverteilergetriebe         Jährlich / Alle 4000h"] },
+    { title: "Zentralschmieranlage", items: ["Zentralschmieranlage auffüllen", "Schmierstellen Sichtprüfung"] },
+    { title: "Rollenkopf / Teleskopausleger", items: ["Seilrollen Sichtkontrolle", "Lager auf Geräuschen prüfen", "Lager Seilrollen schmieren", "Hubendschaltergewicht auf Verschleiß prüfen", "Halterstangen auf Verschleiß prüfen", "Sicherungssplinte prüfen", "Tragrollen am Ausleger prüfen / Freigängigkeit / Befestigung / Einlaufspuren", "Führungsrollen Außenlängengeber auf Freigängigkeit prüfen ggf. Instandsetzen", "Teleskopausleger schmieren", "Winkelverschraubung Telepresse prüfen"] },
+    { title: "Hakenflasche", items: ["Seilrollen Sichtkontrolle", "Lager auf Geräuschen prüfen", "Lager Seilrollen schmieren", "Sicherungssplinte prüfen", "Halterstangen auf Verschleiß prüfen", "Lager Lasthaken schmieren", "Festpunkt oben an der Hakenflasche schmieren"] },
+    { title: "Kabine OW", items: ["Innenraumfilter ern.", "Filter für Schaltschrank ern.", "Trittstufe schmieren", "Schiebetür schmieren", "Scheibenwasser auffüllen", "Service Gesamtsystem zurücksetzen"] },
+    { title: "Drehbühne", items: ["Drehbühnenarretierung schmieren", "Drehkranz schmieren"] }
+  ],
+  Ladekran: [
+    { title: "KAbine", items: ["Türschlösser schmieren", "Schließzylinder schmieren", "Türscharniere und Fangband schmieren", "Fensterheber prüfen", "Scheibenwischer prüfen", "Scheibenreinigungsanlage auffüllen", "Spritzdüsen prüfen ggf. einstellen", "Signalhorn prüfen", "Spiegelverstellung prüfen", "Innenraumfilter ern.", "Service zurück stellen", "Fehlerkeller auslesen und löschen"] },
+    { title: "Elektrik beleuchtung", items: ["Beleuchtung Vorne prüfen", "Beleuchtung Hinten prüfen", "Beleuchtung Seitlich prüfen"] },
+    { title: "bereifung", items: ["Reifen auf Verschleiß prüfen", "Reifenfülldruck prüfen"] },
+    { title: "Fahrwehrk Achsen", items: ["Lenk / Spur / Schubstangen prüfen", "Lenkzylinder prüfen", "Achsstreben prüfen", "Federungszylinder Sichtprüfung", "Kardanwelle Verschraubung prüfen", "Achsen auf Undichtigkeit prüfen", "Außenplaneten Ölwechsel", "Differentiale Ölwechsel", "Achsschenkel Schmieren", "Anschlagpuffer HA prüfen"] },
+    { title: "Motor", items: ["Motor auf Undichtigkeit prüfen", "Motoröl ern.", "Motorölfilter ern.", "Kraftstofffilter ern.", "Lufttrocknerpatrone ern.", "Luftfiltereinsatz ern.", "Kühlwasserstand prüfen", "Kühlwasser ausspindeln", "Kühlsystem auf Undichtigkeit prüfen", "Kurbelgehäuseentlüftung ern.", "Riementrieb prüfen"] },
+    { title: "Fahrgetriebe", items: ["Fahrgetriebe Ölwechsel", "Kardanwelle Verschraubungen prüfen", "Getriebe auf Undichtigkeit prüfen"] },
+    { title: "kran", items: ["Teleskope prüfen und abschmieren", "Hydraulikleitungen prüfen", "Drehkranz schmieren", "Knicklenker schmieren", "Hydraulikölstand prüfen", "Hydraulikfilter ern.", "Abstützung prüfen", "Schiebeholme schmieren", "Teller abschmieren", "Befestigung am Fahrgestell prüfen", "Lasthaken prüfen"] },
+    { title: "Anhängerzugmaul", items: ["Anhängerkupplung schmieren", "Lösehebel prüfen"] }
+  ],
+  LKW: [
+    { title: "KAbine", items: ["Türschlösser schmieren", "Schließzylinder schmieren", "Türscharniere und Fangband schmieren", "Fensterheber prüfen", "Scheibenwischer prüfen", "Scheibenreinigungsanlage auffüllen", "Spritzdüsen prüfen ggf. einstellen", "Signalhorn prüfen", "Spiegelverstellung prüfen", "Innenraumfilter ern.", "Service zurück stellen", "Fehlerkeller auslesen und löschen", "Standheizung prüfen", "Fahrerhaus Verschluss schmieren"] },
+    { title: "Elektrik Beleuchtung", items: ["Beleuchtung Vorne", "Beleuchtung Hinten", "Beleuchtung Seite", "Arbeitsscheinwerfer prüfen"] },
+    { title: "bereifung", items: ["Reifen auf Verschleiß prüfen", "Reifenfülldruck prüfen"] },
+    { title: "Fahrwehrk Achsen", items: ["Lenk / Spur / Schubstangen prüfen", "Lenkzylinder prüfen", "Achsstreben prüfen", "Federungszylinder Sichtprüfung", "Kardanwelle Verschraubung prüfen", "Achsen auf Undichtigkeit prüfen", "Außenplaneten Ölwechsel", "Differentiale Ölwechsel", "Achsschenkel Schmieren", "Anschlagpuffer HA prüfen"] },
+    { title: "Motor", items: ["Motor auf Undichtigkeit prüfen", "Motoröl ern.", "Motorölfilter ern.", "Kraftstofffilter ern.", "Lufttrocknerpatrone ern.", "Luftfiltereinsatz ern.", "Kühlwasserstand prüfen", "Kühlwasser ausspindeln", "Kühlsystem auf Undichtigkeit prüfen", "Kurbelgehäuseentlüftung ern.", "Riementrieb prüfen", "Luftkessel Entwässerungsventile auslösen"] },
+    { title: "Fahrgetriebe", items: ["Fahrgetriebe Ölwechsel", "Kardanwelle Verschraubungen prüfen", "Getriebe auf Undichtigkeit prüfen"] },
+    { title: "Sattelplatte", items: ["Fangmaul schmieren", "Sattelplatte schmieren"] }
+  ],
+  PKW: [
+    { title: "KAbine", items: ["Türschlösser schmieren", "Schließzylinder schmieren", "Türscharniere und Fangband schmieren", "Fensterheber prüfen", "Scheibenwischer prüfen", "Scheibenreinigungsanlage auffüllen", "Spritzdüsen prüfen ggf. einstellen", "Signalhorn prüfen", "Spiegelverstellung prüfen", "Innenraumfilter ern.", "Fehlerkeller auslesen/löschen", "Service zurück setzen"] },
+    { title: "Elektrik Beleuchtung", items: ["Beleuchtung Vorne", "Beleuchtung Hinten", "Beleuchtung Seite"] },
+    { title: "Bereifung", items: ["Reifenfülldruck prüfen", "Reifenfülldruck Reserverad prüfen falls vorhanden", "Reifen auf Verschleiß prüfen"] },
+    { title: "Fahrwehrk Achsen", items: ["Spurstangen prüfen", "Stoßdämpfer/Feder Sichtprüfung", "Stoßdämpfer HA Anschlagpuffer prüfen", "Stabibuchsen prüfen", "Koppelstangen prüfen", "Traggelenk prüfen", "Querlenker prüfen", "Antriebswellenmanchetten prüfen", "Radlager prüfen", "Bremse prüfen", "Bremsleitungen prüfen", "Bremsflüssigkeit ern."] },
+    { title: "Motor", items: ["Motor auf Undichtigkeit prüfen", "Motoröl ern.", "Motorölfilter ern.", "Kraftstofffilter ern.", "Luftfiltereinsatz ern.", "Kühlwasserstand prüfen", "Kühlwasser ausspindeln", "Kühlsystem auf Undichtigkeit prüfen", "Riementrieb prüfen", "Abgasanlage prüfen / Aufhängung"] },
+    { title: "Getriebe", items: ["Getriebe auf Dichtheit prüfen", "Getriebeöl ern."] }
   ]
 };
 
