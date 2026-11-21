@@ -87,7 +87,7 @@ export function createLocalStore() {
 
     async saveTemplate(cat, tpl, by) {
       const all = read(K_TPL, {});
-      all[cat] = { groups: tpl.groups, updatedBy: by || '', updatedAt: Date.now() };
+      all[cat] = { groups: tpl.groups, updatedBy: by || '', updatedAt: Date.now(), textFix: tpl.textFix || 1 };
       if (!write(K_TPL, all)) throw new Error('Speicher voll');
       emitTpl();
     },

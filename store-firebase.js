@@ -11,7 +11,7 @@ import {
   connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
   onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs
 } from './vendor/firebase/firebase-firestore.js';
-import { ADMINS } from './data.js';
+import { ADMINS, TEXT_FIX_VERSION } from './data.js';
 
 const K_WS = 'kds_workshop';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne 0/O, 1/I
@@ -273,8 +273,9 @@ export function createCloudStore(cfg) {
     },
 
     saveTemplate(cat, tpl, by) {
+      // textFix: mit dieser Version gespeicherte Vorlagen gelten als rechtschreib-korrigiert
       return track(setDoc(doc(db, 'workshops', wid, 'templates', cat),
-        { groups: tpl.groups, updatedBy: by || '', updatedAt: serverTimestamp() }));
+        { groups: tpl.groups, updatedBy: by || '', updatedAt: serverTimestamp(), textFix: TEXT_FIX_VERSION }));
     },
 
     onProtocols(cb) {

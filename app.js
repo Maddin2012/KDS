@@ -5,7 +5,7 @@
 
 import {
   CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
-  emptyDraft, migrateOldData, storeFromMap
+  emptyDraft, migrateOldData, storeFromMap, TEXT_FIX_VERSION, fixTemplateTexts
 } from './data.js';
 import { createLocalStore } from './store-local.js';
 
@@ -537,6 +537,33 @@ function setAdminMe(code, claim) {
   S.claim = claim;
   lsSet('kds_me', code);
   render();
+  applyTextFixes();
+}
+
+/* Einmalige Rechtschreib-Korrektur der Werkstatt-Vorlagen (siehe data.js, TEXT_FIXES).
+   Läuft nur auf einem Gerät mit gültigem Admin-Nachweis, je Kategorie einmal. */
+let fixingTexts = false;
+async function applyTextFixes() {
+  if (fixingTexts || !amAdmin() || S.edit) return;
+  const todo = CATEGORIES.filter(c => S.templates[c] && Array.isArray(S.templates[c].groups)
+    && (S.templates[c].textFix || 0) < TEXT_FIX_VERSION);
+  if (!todo.length) return;
+  fixingTexts = true;
+  const fixed = [];
+  try {
+    for (const c of todo) {
+      const { groups, changed } = fixTemplateTexts(S.templates[c]);
+      await S.store.saveTemplate(c, { groups }, S.me);
+      S.templates[c] = { ...S.templates[c], groups, textFix: TEXT_FIX_VERSION };
+      if (changed) fixed.push(c);
+    }
+    if (fixed.length) {
+      if (S.view === 'list' && !S.edit) renderFill();
+      showToast('Rechtschreibung in den Vorlagen korrigiert: ' + fixed.join(', '));
+    }
+  } catch (e) {
+    if (e && e.code === 'permission-denied') adminRejected();
+  } finally { fixingTexts = false; }
 }
 
 /* Werkstatt-Code + Einladen (nur mit gemeinsamer Ablage) */
@@ -776,7 +803,7 @@ function openSettings() {
     try {
       flushTemplateSave();
       for (const c of cats) {
-        const tpl = cleanTemplate(ctx.mig.templates[c]);
+        const tpl = cleanTemplate(fixTemplateTexts(ctx.mig.templates[c]));   // bekannte Tippfehler gleich mit korrigieren
         await S.store.saveTemplate(c, tpl, S.me);
         S.templates[c] = { ...tpl, updatedBy: S.me };
         if (withDrafts && ctx.mig.drafts[c]) lsSet(draftKey(c), JSON.stringify(ctx.mig.drafts[c]));
@@ -1355,6 +1382,7 @@ async function start() {
   S.store.onTemplates((all) => {
     const prevCat = S.templates[S.cat];
     S.templates = all;
+    setTimeout(applyTextFixes, 0);
     if (S.view !== 'list') return;
     if (S.edit) { S.templates[S.cat] = prevCat || S.templates[S.cat]; return; } // eigene Bearbeitung hat Vorrang
     const a = document.activeElement;
@@ -1380,6 +1408,7 @@ async function start() {
   if (!S.me) await pickMe(false);
   if (S.store.mode === 'cloud' && S.me && !isAdmin(S.me)) S.store.setMe(S.me).catch(() => {});
   render();
+  applyTextFixes();
 }
 
 start();
