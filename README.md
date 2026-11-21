@@ -87,13 +87,25 @@ Bei `ADMINS` zusätzlich in [`firestore.rules`](./firestore.rules) die Funktione
 `adminCodes()` und `noPinsYet()` anpassen und die Regeln neu veröffentlichen
 (Schritt 5 unten).
 
-### Daten der alten Version
+### Daten der alten Version übernehmen
 
-Wer die bisherige Einzeldatei-Version im selben Browser unter derselben Adresse
-benutzt hat, bekommt beim ersten Start die dort gespeicherten Listen übernommen
-(als laufende Eingaben; beim Anlegen der Werkstatt durch einen Admin auch als
-Vorlagen). Unter einer neuen Adresse (GitHub Pages) sieht der Browser die alten
-Daten nicht – dann starten die Vorlagen mit dem Standard.
+Die alte Einzeldatei-Version (`Serviceprotokoll….html`) hat ihre Listen im
+Speicher des Browsers abgelegt, mit dem sie geöffnet wurde. So kommen sie in die
+neue App:
+
+1. Auf dem PC, auf dem die alte Datei benutzt wurde, die neue App öffnen
+   → als Admin **⚙ Einstellungen → „Daten aus alter Version übernehmen“** →
+   **„Export-Datei herunterladen“** (oder [`tools/KDS-Datenexport.html`](./tools/KDS-Datenexport.html)
+   aus dem Repository laden).
+2. Die heruntergeladene `KDS-Datenexport.html` im **selben Browser** öffnen
+   (Doppelklick, ggf. „Öffnen mit“ → Chrome/Edge). Sie zeigt, was gefunden wurde
+   → **„Als Datei speichern“** → `KDS-Altdaten.json`.
+3. In der App im selben Fenster die Datei auswählen, Kategorien anhaken
+   → **Übernehmen**. Die Vorlagen werden für alle Geräte ersetzt; auf Wunsch
+   auch die damals laufenden Eingaben auf dieses Gerät.
+
+Findet die Export-Datei nichts, wurde ein anderer Browser oder Windows-Benutzer
+benutzt; die Export-Datei beschreibt einen Ausweg über die Browser-Konsole.
 
 ---
 

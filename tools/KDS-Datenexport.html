@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KDS Datenexport</title>
+<style>
+  :root { --orange:#ff8300; --black:#111213; --steel:#6f787e; --line:#e2e6e8; --bg:#f6f7f8; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--black); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:32px 16px }
+  .card { background:#fff; border-radius:10px; padding:24px; box-shadow:0 4px 18px rgba(17,18,19,.08) }
+  .wm { display:flex; align-items:center; gap:9px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:14px }
+  .wm .bar { width:5px; height:22px; background:var(--orange) }
+  .wm em { font-style:normal; color:var(--orange) }
+  h1 { font-size:22px; margin:0 0 8px }
+  p { margin:0 0 12px; color:#3b4146 }
+  table { width:100%; border-collapse:collapse; margin:10px 0 18px }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px }
+  th { color:var(--steel); font-size:12px; text-transform:uppercase; letter-spacing:.06em }
+  button { width:100%; background:var(--orange); color:var(--black); border:0; border-radius:6px; padding:14px;
+           font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:15px; cursor:pointer }
+  button:hover { background:#d96e00; color:#fff }
+  .ok { color:#1f7a55; font-weight:700 }
+  .warn { background:#fff4e8; border-left:4px solid var(--orange); padding:10px 12px; border-radius:6px; margin:12px 0 }
+  code, pre { font-family:ui-monospace, Consolas, monospace; font-size:12px }
+  pre { background:#f0f2f3; padding:10px; border-radius:6px; white-space:pre-wrap; word-break:break-all }
+  details { margin-top:16px } summary { cursor:pointer; color:var(--steel) }
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+  <div class="wm"><span class="bar"></span>Krandienst <em>Schulz</em></div>
+  <h1>Daten der alten Serviceliste sichern</h1>
+  <p>Diese Datei liest die Listen, die die <b>alte Serviceliste</b> in diesem Browser gespeichert hat,
+     und speichert sie als Datei <code>KDS-Altdaten.json</code>. An den alten Daten wird nichts verändert.</p>
+  <div id="out"></div>
+
+  <details>
+    <summary>Nichts gefunden? So geht es auch</summary>
+    <p style="margin-top:10px">Die Datei muss im <b>selben Browser</b> (z.&nbsp;B. Chrome oder Edge) und mit <b>demselben
+      Windows-Benutzer</b> geöffnet werden, mit dem früher die alte Serviceliste benutzt wurde.</p>
+    <p>Klappt es trotzdem nicht: die <b>alte Datei</b> (<code>Serviceprotokoll (6).html</code>) öffnen,
+      <b>F12</b> drücken → Reiter <b>Konsole</b> → diese Zeile einfügen → <b>Enter</b>. Dann wird
+      <code>KDS-Altdaten.json</code> direkt heruntergeladen:</p>
+    <pre id="snippet"></pre>
+  </details>
+</div></div>
+
+<script>
+  var SNIPPET = "(function(){var k={};Object.keys(localStorage).forEach(function(x){if(/krandienst|^kds_/i.test(x))k[x]=localStorage.getItem(x)});var d={format:'kds-legacy-export',version:1,exportedAt:new Date().toISOString(),keys:k};var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));a.download='KDS-Altdaten.json';document.body.appendChild(a);a.click();})()";
+  document.getElementById('snippet').textContent = SNIPPET;
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  var keys = {};
+  try {
+    Object.keys(localStorage).forEach(function (k) { if (/krandienst|^kds_/i.test(k)) keys[k] = localStorage.getItem(k); });
+  } catch (e) { /* Speicher gesperrt */ }
+
+  // Übersicht: je Kategorie Hauptgruppen und Prüfpunkte (neueste Version je Kategorie)
+  var best = {};
+  Object.keys(keys).forEach(function (k) {
+    var m = /^krandienst_serviceliste_v(\d+)_(.+)_html$/.exec(k);
+    if (m && (!best[m[2]] || best[m[2]].v < +m[1])) best[m[2]] = { v: +m[1], key: k };
+  });
+  var rows = Object.keys(best).sort().map(function (cat) {
+    var doc = new DOMParser().parseFromString('<div id="r">' + keys[best[cat].key] + '</div>', 'text/html');
+    var boxes = doc.querySelectorAll('#r > .box');
+    var items = doc.querySelectorAll('#r > .box tbody tr').length;
+    return '<tr><td><b>' + esc(cat) + '</b></td><td>' + boxes.length + '</td><td>' + items + '</td></tr>';
+  });
+
+  var out = document.getElementById('out');
+  if (!rows.length) {
+    out.innerHTML = '<div class="warn"><b>In diesem Browser wurden keine Daten der alten Serviceliste gefunden.</b><br>' +
+      'Siehe unten „Nichts gefunden?“.</div>';
+  } else {
+    out.innerHTML = '<p class="ok">Gefunden:</p>' +
+      '<table><thead><tr><th>Kategorie</th><th>Hauptgruppen</th><th>Prüfpunkte</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
+      '<button id="save" type="button">Als Datei speichern</button>' +
+      '<p style="margin-top:12px;font-size:13px">Danach in der neuen App als Admin: ⚙ Einstellungen → „Daten aus alter Version übernehmen“ → diese Datei auswählen.</p>';
+    document.getElementById('save').onclick = function () {
+      var data = { format: 'kds-legacy-export', version: 1, exportedAt: new Date().toISOString(), keys: keys };
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+      a.download = 'KDS-Altdaten.json';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+  }
+</script>
+</body>
+</html>

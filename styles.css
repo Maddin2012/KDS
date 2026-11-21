@@ -617,3 +617,5 @@
   .rec-code i { font-style:normal; color:var(--steel) }
   @media (max-width:420px) { .rec-code { font-size:20px; letter-spacing:.04em } }
   .field select { border:1px solid var(--line); border-radius:6px; padding:11px 12px; font-size:16px }
+  .setup-card a { color:var(--orange-dk); font-weight:600 }
+  html[data-theme="dark"] .setup-card a { color:var(--orange) }

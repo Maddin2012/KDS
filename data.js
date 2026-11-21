@@ -83,15 +83,41 @@ export function emptyDraft() {
 /* ---------- Übernahme aus der alten Version (alles in localStorage) ----------
    Liest pro Kategorie die gespeicherte Liste und macht daraus
    eine Vorlage plus das laufende Protokoll (Entwurf). */
-const OLD_PREFIX = 'krandienst_serviceliste_v8_';
+/* Speicher-Schlüssel der alten Version: krandienst_serviceliste_v<N>_<Kategorie>_html / _inputs.
+   Je Kategorie wird die höchste gefundene Versionsnummer genommen. */
+const OLD_KEY = /^krandienst_serviceliste_v(\d+)_(.+)_html$/;
 
-export function migrateOldData() {
+function findOldKeys(keys) {
+  const best = {};
+  keys.forEach(k => {
+    const m = OLD_KEY.exec(k);
+    if (!m) return;
+    const v = +m[1], cat = m[2];
+    if (!best[cat] || best[cat].v < v) best[cat] = { v, prefix: `krandienst_serviceliste_v${v}_` };
+  });
+  return best;
+}
+
+/* store: { getItem(k), keys() } – Standard ist localStorage dieses Browsers.
+   Für den Import aus einer Export-Datei wird eine Tabelle Schlüssel → Wert übergeben. */
+export function storeFromMap(map) {
+  return { getItem: (k) => (Object.prototype.hasOwnProperty.call(map, k) ? map[k] : null), keys: () => Object.keys(map) };
+}
+const browserStore = {
+  getItem: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  keys: () => { try { return Object.keys(localStorage); } catch (e) { return []; } }
+};
+
+export function migrateOldData(store = browserStore) {
   const result = { templates: {}, drafts: {} };
+  const found = findOldKeys(store.keys());
   for (const cat of CATEGORIES) {
+    if (!found[cat]) continue;
+    const OLD_PREFIX = found[cat].prefix;
     let html, inputs;
     try {
-      html = localStorage.getItem(OLD_PREFIX + cat + '_html');
-      inputs = JSON.parse(localStorage.getItem(OLD_PREFIX + cat + '_inputs') || '{}') || {};
+      html = store.getItem(OLD_PREFIX + cat + '_html');
+      inputs = JSON.parse(store.getItem(OLD_PREFIX + cat + '_inputs') || '{}') || {};
     } catch (e) { continue; }
     if (!html) continue;
 

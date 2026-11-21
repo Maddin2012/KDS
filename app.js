@@ -5,7 +5,7 @@
 
 import {
   CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
-  emptyDraft, migrateOldData
+  emptyDraft, migrateOldData, storeFromMap
 } from './data.js';
 import { createLocalStore } from './store-local.js';
 
@@ -640,6 +640,35 @@ function openSettings() {
       <p>Neue PIN für ${esc(monteurLabel(ctx.code))}. Danach wird ein Wiederherstellungs-Code für ${esc(ctx.code)} angezeigt – bitte an ${esc(ctx.code)} weitergeben.</p>
       <form id="set-form" novalidate>${pinField('new-pin1', 'Neue PIN', 'new-password')}${pinField('new-pin2', 'Neue PIN wiederholen', 'new-password')}
       <button class="btn-big" type="submit">PIN speichern</button><div class="setup-err" id="set-err"></div></form>${back}`;
+    if (screen === 'import') {
+      const m = ctx.mig;
+      const cats = m ? CATEGORIES.filter(c => m.templates[c]) : [];
+      const count = (t) => ({ g: t.groups.length, i: t.groups.reduce((n, g) => n + g.items.length, 0) });
+      return `<h3>Daten aus alter Version übernehmen</h3>
+        <p>So geht's: <b>1.</b> Auf dem PC, auf dem die alte Serviceliste benutzt wurde, die
+        <a href="tools/KDS-Datenexport.html" download="KDS-Datenexport.html">Export-Datei herunterladen</a>,
+        im <b>selben Browser</b> öffnen und „Als Datei speichern“ wählen. <b>2.</b> Die entstandene
+        Datei <code>KDS-Altdaten.json</code> hier auswählen.</p>
+        <form id="set-form" novalidate>
+          <div class="field"><label for="imp-file">${ctx.fileName ? 'Andere Datei wählen' : 'Datei'}</label>
+            <input id="imp-file" type="file" accept=".json,application/json"></div>
+          ${ctx.fileName && m ? `<p style="margin:0 0 8px;font-size:13px">Eingelesen: <b>${esc(ctx.fileName)}</b></p>` : ''}
+          ${ctx.err ? `<div class="setup-err">${esc(ctx.err)}</div>` : ''}
+          ${m ? (cats.length ? `
+            <p style="margin:6px 0">Gefunden – Haken setzen, welche Vorlagen <b>für alle Geräte ersetzt</b> werden:</p>
+            <div class="set-list" style="margin-bottom:10px">
+              ${cats.map(c => { const a = count(m.templates[c]), b = count(tplFor(c)); return `
+                <label class="set-btn" style="cursor:pointer"><span><input type="checkbox" class="imp-cat" value="${esc(c)}" checked style="margin-right:8px">${esc(c)}</span>
+                <small>alt: ${a.g} Gruppen / ${a.i} Punkte · jetzt: ${b.g} / ${b.i}</small></label>`; }).join('')}
+            </div>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin-bottom:12px">
+              <input type="checkbox" id="imp-drafts" checked style="margin-top:3px">
+              <span>Auch die damals <b>laufenden Eingaben</b> (Fahrzeug, Haken, Bemerkungen, Monteure) auf <b>dieses Gerät</b> übernehmen – ersetzt die aktuelle, noch nicht abgeschlossene Liste der gewählten Kategorien.</span>
+            </label>
+            <button class="btn-big" type="submit">Übernehmen</button>` : '<div class="setup-err">In der Datei sind keine Listen der alten Serviceliste enthalten.</div>') : ''}
+          <div class="setup-err" id="set-err"></div>
+        </form>${back}`;
+    }
     if (screen === 'forgot') return `<h3>PIN vergessen?</h3>
       <p>Mit dem Wiederherstellungs-Code, der beim Festlegen der PIN angezeigt wurde, eine neue PIN setzen.
       Ohne Code: Der andere Admin kann die PIN unter ⚙ Einstellungen zurücksetzen.</p>
@@ -676,6 +705,13 @@ function openSettings() {
           <button class="set-btn" type="button" data-s="forgot">PIN vergessen? <small>mit Wiederherstellungs-Code</small></button>
         </div>
       </div>
+      ${admin ? `
+      <div class="set-section">
+        <h4>Daten</h4>
+        <div class="set-list">
+          <button class="set-btn" type="button" data-s="import">Daten aus alter Version übernehmen <small>KDS-Altdaten.json</small></button>
+        </div>
+      </div>` : ''}
       ${cloud ? '' : '<p style="font-size:12px;margin-top:14px">Probemodus: Einstellungen gelten nur auf diesem Gerät.</p>'}
       <div class="setup-back"><button class="link-btn" data-s="close" type="button">Schließen</button></div>`;
   };
@@ -684,8 +720,25 @@ function openSettings() {
     ov.classList.remove('hidden');
     const f = ov.querySelector('input'); if (f && screen !== 'main') f.focus();
   };
-  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; };
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.onchange = null; };
   draw();
+
+  ov.onchange = async (e) => {
+    if (e.target.id !== 'imp-file' || !e.target.files.length) return;
+    const file = e.target.files[0];
+    ctx = { err: '', mig: null, fileName: file.name };
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error('Die Datei ist zu groß für eine Export-Datei.');
+      const data = JSON.parse(await file.text());
+      if (!data || data.format !== 'kds-legacy-export' || typeof data.keys !== 'object' || !data.keys) throw new Error('Das ist keine KDS-Export-Datei.');
+      const map = {};
+      Object.entries(data.keys).forEach(([k, v]) => { if (typeof v === 'string') map[k] = v; });
+      ctx.mig = migrateOldData(storeFromMap(map));
+    } catch (ex) {
+      ctx.err = ex instanceof SyntaxError ? 'Die Datei konnte nicht gelesen werden (kein gültiges JSON).' : (ex.message || 'Die Datei konnte nicht gelesen werden.');
+    }
+    draw();
+  };
 
   ov.onclick = async (e) => {
     const th = e.target.closest('[data-theme-set]');
@@ -709,8 +762,39 @@ function openSettings() {
     draw();
   };
 
+  async function doImport() {
+    const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
+    const cats = Array.from(ov.querySelectorAll('.imp-cat:checked')).map(c => c.value);
+    const withDrafts = $('imp-drafts') && $('imp-drafts').checked;
+    if (!cats.length) { err.textContent = 'Bitte mindestens eine Kategorie anhaken.'; return; }
+    if (!amAdmin()) { err.textContent = 'Bitte zuerst als Admin anmelden.'; return; }
+    if (S.store.mode === 'cloud' && !navigator.onLine) { err.textContent = 'Zum Übernehmen wird Internet gebraucht.'; return; }
+    if (!(await confirmModal(`Vorlagen ${cats.join(', ')} für alle Geräte durch die alten Listen ersetzen?`, 'Ersetzen'))) return;
+    btn.disabled = true; err.textContent = 'Wird übernommen …';
+    try {
+      flushTemplateSave();
+      for (const c of cats) {
+        const tpl = cleanTemplate(ctx.mig.templates[c]);
+        await S.store.saveTemplate(c, tpl, S.me);
+        S.templates[c] = { ...tpl, updatedBy: S.me };
+        if (withDrafts && ctx.mig.drafts[c]) lsSet(draftKey(c), JSON.stringify(ctx.mig.drafts[c]));
+      }
+      draft = loadDraft(S.cat);
+      if (S.edit) { S.edit = false; S.editTpl = null; }
+      render();
+      showToast('Übernommen: ' + cats.join(', '));
+      screen = 'main'; ctx = {}; draw();
+    } catch (ex) {
+      console.error(ex);
+      if (ex && ex.code === 'permission-denied') { close(); adminRejected(); return; }
+      err.textContent = 'Übernehmen fehlgeschlagen – bitte erneut versuchen.';
+      btn.disabled = false;
+    }
+  }
+
   ov.onsubmit = async (e) => {
     e.preventDefault();
+    if (screen === 'import') { await doImport(); return; }
     const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
     const p1 = $('new-pin1').value.trim(), p2 = $('new-pin2').value.trim();
     if (!PIN_RE.test(p1)) { err.textContent = 'Die neue PIN besteht aus 4 bis 12 Ziffern.'; return; }
