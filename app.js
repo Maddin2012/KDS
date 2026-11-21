@@ -611,6 +611,8 @@ function pinFormHtml(code, mode) {
     <div class="setup-back"><button class="link-btn" data-x="back" type="button">← Zurück</button></div>`;
 }
 
+const fmtCode = (c) => String(c || '').replace(/(.{4})(?=.)/g, '$1 ');
+
 /* ---------- Wiederherstellungs-Code einmalig anzeigen ---------- */
 function showRecovery(code, rc, ov) {
   return new Promise(resolve => {
@@ -669,6 +671,20 @@ function openSettings() {
       <p>Neue PIN für ${esc(monteurLabel(ctx.code))}. Danach wird ein Wiederherstellungs-Code für ${esc(ctx.code)} angezeigt – bitte an ${esc(ctx.code)} weitergeben.</p>
       <form id="set-form" novalidate>${pinField('new-pin1', 'Neue PIN', 'new-password')}${pinField('new-pin2', 'Neue PIN wiederholen', 'new-password')}
       <button class="btn-big" type="submit">PIN speichern</button><div class="setup-err" id="set-err"></div></form>${back}`;
+    if (screen === 'switch') {
+      const ws = S.store.workshop;
+      return `<h3>Andere Werkstatt beitreten</h3>
+        <p>Dieses Gerät ist gerade in der Werkstatt <b class="ws-inline">${esc(ws ? fmtCode(ws.id) : '–')}</b>.
+        Den Code der richtigen Werkstatt findet ein Kollege dort unter „Ich bin“ → „Kollegen einladen“.</p>
+        <form id="set-form" novalidate>
+          <div class="field"><label for="sw-code">Werkstatt-Code</label>
+            <input id="sw-code" class="code" maxlength="24" autocomplete="off" placeholder="XXXX XXXX XXXX XXXX"></div>
+          <p style="font-size:13px">Danach Kürzel wählen (SE/KÖ mit der PIN <b>dieser</b> Werkstatt) und „Beitreten“ tippen.
+          Die bisherige Werkstatt wird auf diesem Gerät verlassen – ihre Daten bleiben erhalten.</p>
+          <button class="btn-big" type="submit">Wechseln</button>
+          <div class="setup-err" id="set-err"></div>
+        </form>${back}`;
+    }
     if (screen === 'import') {
       const m = ctx.mig;
       const cats = m ? CATEGORIES.filter(c => m.templates[c]) : [];
@@ -734,6 +750,13 @@ function openSettings() {
           <button class="set-btn" type="button" data-s="forgot">PIN vergessen? <small>mit Wiederherstellungs-Code</small></button>
         </div>
       </div>
+      ${cloud && S.store.workshop ? `
+      <div class="set-section">
+        <h4>Werkstatt</h4>
+        <div class="set-list">
+          <button class="set-btn" type="button" data-s="switch">Andere Werkstatt beitreten <small>jetzt: ${esc(fmtCode(S.store.workshop.id))}</small></button>
+        </div>
+      </div>` : ''}
       ${admin ? `
       <div class="set-section">
         <h4>Daten</h4>
@@ -824,6 +847,19 @@ function openSettings() {
   ov.onsubmit = async (e) => {
     e.preventDefault();
     if (screen === 'import') { await doImport(); return; }
+    if (screen === 'switch') {
+      const err = $('set-err');
+      const code = $('sw-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length !== 16) { err.textContent = 'Der Werkstatt-Code hat 16 Zeichen.'; return; }
+      if (S.store.workshop && code === S.store.workshop.id) { err.textContent = 'In dieser Werkstatt ist das Gerät bereits.'; return; }
+      if (!navigator.onLine) { err.textContent = 'Zum Wechseln wird Internet gebraucht.'; return; }
+      if (!(await confirmModal('Die bisherige Werkstatt auf diesem Gerät verlassen und der neuen beitreten?', 'Wechseln', false))) return;
+      if (S.edit) flushTemplateSave();
+      S.store.leave();
+      lsSet('kds_me', '');                 // Kürzel wird beim Beitreten neu gewählt (Admins mit PIN der neuen Werkstatt)
+      location.href = location.pathname + '?code=' + code;
+      return;
+    }
     const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
     const p1 = $('new-pin1').value.trim(), p2 = $('new-pin2').value.trim();
     if (!PIN_RE.test(p1)) { err.textContent = 'Die neue PIN besteht aus 4 bis 12 Ziffern.'; return; }

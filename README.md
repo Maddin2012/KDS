@@ -191,6 +191,12 @@ Jeder Push auf `main` veröffentlicht automatisch neu.
 **Wichtig:** „Neue Werkstatt anlegen“ nur ein einziges Mal. Jede weitere
 Werkstatt wäre ein getrennter Bereich mit eigenem Archiv.
 
+**Gerät in der falschen Werkstatt?** (Werkstatt-Code unter „Ich bin“ ist ein
+anderer als auf den übrigen Geräten) → **⚙ Einstellungen → „Andere Werkstatt
+beitreten“** → richtigen Code eingeben → Kürzel wählen (Admins mit der PIN dieser
+Werkstatt) → **Beitreten**. Die bisherige Werkstatt wird auf dem Gerät verlassen,
+ihre Daten bleiben erhalten.
+
 ### 9. Auf dem Handy installieren
 
 **Android/Chrome:** Adresse öffnen → Menü (⋮) → **Zum Startbildschirm hinzufügen**.
