@@ -184,9 +184,10 @@ Werkstatt wäre ein getrennter Bereich mit eigenem Archiv.
 **Android/Chrome:** Adresse öffnen → Menü (⋮) → **Zum Startbildschirm hinzufügen**.
 **iPhone/Safari:** Teilen → **Zum Home-Bildschirm**.
 
-Nach einem Update holt sich die App den neuen Stand beim nächsten Öffnen mit Netz;
-notfalls die App einmal ganz schließen (aus der App-Übersicht wegwischen) und neu
-öffnen. Welche Version läuft, steht unten in der Seitenleiste unter **„Stand:“**
+Updates kommen von selbst: Die App prüft beim Öffnen, beim Zurückholen aus dem
+Hintergrund und alle 30 Minuten auf eine neue Version und lädt sich dann einmal
+neu – nicht mitten in einer Bearbeitung oder bei offenem Dialog, sondern im
+nächsten ruhigen Moment. Laufende Eingaben bleiben erhalten. Welche Version läuft, steht unten in der Seitenleiste unter **„Stand:“**
 (Datum und Uhrzeit der Veröffentlichung) – damit lässt sich auf jedem Gerät
 prüfen, ob ein Update angekommen ist.
 

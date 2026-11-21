@@ -1298,7 +1298,46 @@ async function start() {
 
 start();
 
-/* Offline-Fähigkeit: Service Worker (nur über http/https) */
+/* Offline-Fähigkeit + automatische Updates: Service Worker (nur über http/https)
+   - prüft beim Öffnen, beim Zurückholen aus dem Hintergrund und alle 30 Minuten
+     auf eine neue Version,
+   - lädt die Seite dann einmal selbst neu – aber nicht mitten in einer Bearbeitung
+     oder einem offenen Dialog; dann beim nächsten ruhigen Moment. */
+function busyForReload() {
+  const overlayOpen = !$('setup').classList.contains('hidden') || $('confirm-modal-overlay').classList.contains('show');
+  const a = document.activeElement;
+  const typing = a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+  return S.edit || S.protoEdit || overlayOpen || typing || !!touchDrag;
+}
+
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.KDS_NO_SW) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('load', async () => {
+    let reg;
+    const hadController = !!navigator.serviceWorker.controller;
+    try { reg = await navigator.serviceWorker.register('sw.js'); } catch (e) { return; }
+
+    let updateReady = false, reloading = false;
+    const reloadNow = () => {
+      if (reloading) return;
+      if (busyForReload()) { updateReady = true; return; }
+      reloading = true;
+      location.reload();
+    };
+    // Neue Version hat die Kontrolle übernommen (sw.js: skipWaiting + clients.claim)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;            // allererste Installation: nichts neu zu laden
+      reloadNow();
+    });
+    // Aufgeschobenes Update nachholen, sobald nichts mehr offen ist
+    const retry = () => { if (updateReady) reloadNow(); };
+    ['click', 'focusout', 'keyup'].forEach(t => document.addEventListener(t, () => setTimeout(retry, 300)));
+
+    const check = () => { if (navigator.onLine) reg.update().catch(() => {}); };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check();
+      else retry();                           // App geht in den Hintergrund: guter Moment
+    });
+    window.addEventListener('online', check);
+    setInterval(check, 30 * 60 * 1000);
+  });
 }
