@@ -5,6 +5,13 @@ const K_TPL = 'kds_local_templates';
 const K_PROTO = 'kds_local_protocols';
 const K_PINS = 'kds_local_pins';
 const K_CLAIM = 'kds_local_claim';
+const K_REC = 'kds_local_recoveries';
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newRecoveryCode() {
+  const a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return Array.from(a, b => CODE_CHARS[b % CODE_CHARS.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
+}
 
 async function sha256hex(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -45,10 +52,30 @@ export function createLocalStore() {
 
     /* PIN-Schutz im Probemodus (nur auf diesem Gerät, ohne echten Schutz) */
     pinHash(code, pin) { return sha256hex(`kds:local:${code}:${pin}`); },
-    async getPinFlags() { const p = read(K_PINS, {}); return Object.fromEntries(Object.keys(p).map(k => [k, true])); },
+    recHash(code, rc) { return sha256hex(`kds-rec:local:${code}:${String(rc).toUpperCase().replace(/[^A-Z0-9]/g, '')}`); },
+    async getPinFlags() {
+      const p = read(K_PINS, {}), r = read(K_REC, {});
+      return Object.fromEntries(Object.keys(p).map(k => [k, { set: true, rec: !!r[k] }]));
+    },
     onPinFlags(cb) { this.getPinFlags().then(cb); return () => {}; },
     async getClaim() { return read(K_CLAIM, null); },
-    async setPin(code, pin) { const p = read(K_PINS, {}); p[code] = await this.pinHash(code, pin); write(K_PINS, p); },
+    async setPin(code, pin, opts = {}) {
+      const p = read(K_PINS, {}); p[code] = await this.pinHash(code, pin); write(K_PINS, p);
+      return opts.recovery ? this.createRecovery(code) : null;
+    },
+    async createRecovery(code) {
+      const rc = newRecoveryCode();
+      const r = read(K_REC, {}); r[code] = await this.recHash(code, rc); write(K_REC, r);
+      return rc;
+    },
+    async resetPinWithRecovery(code, rc, newPin) {
+      const r = read(K_REC, {});
+      if (!r[code] || r[code] !== await this.recHash(code, rc)) throw new Error('Wiederherstellungs-Code falsch – oder für dieses Kürzel gibt es keinen.');
+      await this.setPin(code, newPin);
+      const recovery = await this.createRecovery(code);
+      const claim = await this.claimAdmin(code, newPin);
+      return { recovery, claim };
+    },
     async claimAdmin(code, pin) {
       const p = read(K_PINS, {});
       const hash = await this.pinHash(code, pin);

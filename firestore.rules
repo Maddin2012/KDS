@@ -47,6 +47,14 @@ service cloud.firestore {
         && claimValid(wid, get(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(request.auth.uid)).data);
     }
 
+    // PIN zurücksetzen mit Wiederherstellungs-Code: `rec` muss zum gespeicherten
+    // Prüfwert passen.
+    function recoveryOk(wid, code, data) {
+      return 'rec' in data
+        && exists(/databases/$(database)/documents/workshops/$(wid)/recoveries/$(code))
+        && data.rec == get(/databases/$(database)/documents/workshops/$(wid)/recoveries/$(code)).data.hash;
+    }
+
     // Allererste PIN einer Werkstatt: nur solange noch keine einzige gesetzt ist.
     function noPinsYet(wid) {
       return !exists(/databases/$(database)/documents/workshops/$(wid)/pins/$('SE'))
@@ -87,14 +95,29 @@ service cloud.firestore {
                   && claimValid(wid, getAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid)).data)));
       }
 
-      // PIN-Prüfwerte: für niemanden lesbar. Setzen/ändern nur Admins;
-      // die allererste PIN darf jedes Mitglied setzen (Einrichtung).
+      // PIN-Prüfwerte: für niemanden lesbar. Setzen/ändern dürfen
+      //  · Admins (auch für den anderen Admin – „PIN zurücksetzen“),
+      //  · bei der Einrichtung jedes Mitglied die allererste PIN,
+      //  · wer den Wiederherstellungs-Code dieses Kürzels kennt (Feld `rec`).
       match /pins/{code} {
         allow read: if false;
         allow create, update: if isMember(wid) && code in adminCodes()
-          && request.resource.data.keys().hasOnly(['hash'])
+          && request.resource.data.keys().hasOnly(['hash', 'rec'])
           && request.resource.data.hash is string && request.resource.data.hash.size() == 64
-          && (isAdmin(wid) || noPinsYet(wid));
+          && (isAdmin(wid) || noPinsYet(wid) || recoveryOk(wid, code, request.resource.data));
+        allow delete: if isAdmin(wid);
+      }
+
+      // Wiederherstellungs-Codes: nur ein Prüfwert, für niemanden lesbar.
+      // Anlegen/erneuern: Admins, die Einrichtung, oder wer den bisherigen Code
+      // kennt (Feld `prev` = Prüfwert des alten Codes – beim Zurücksetzen).
+      match /recoveries/{code} {
+        allow read: if false;
+        allow create, update: if isMember(wid) && code in adminCodes()
+          && request.resource.data.keys().hasOnly(['hash', 'prev'])
+          && request.resource.data.hash is string && request.resource.data.hash.size() == 64
+          && (isAdmin(wid) || noPinsYet(wid)
+              || (resource != null && request.resource.data.get('prev', '') == resource.data.hash));
         allow delete: if isAdmin(wid);
       }
 

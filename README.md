@@ -53,14 +53,21 @@ Ein Gerät bleibt angemeldet, bis es ein anderes Kürzel wählt.
 
 - **Erste PIN:** Gibt es in der Werkstatt noch keine PIN, legt das erste
   Gerät, das SE (oder KÖ) wählt, die PIN fest (zweimal eingeben).
-- **Weitere PINs / ändern:** angemeldeter Admin → „Ich bin“ → **Admin-PINs**.
-  Für ein Kürzel ohne PIN (z. B. KÖ, solange keine festgelegt ist) ist die
-  Anmeldung gesperrt.
-- **PIN ändern** meldet alle Geräte ab, die mit der alten PIN angemeldet waren.
-- **PIN vergessen:** Der andere Admin legt eine neue fest. Gibt es keinen:
-  in der Firebase-Konsole unter *Firestore Database* die Einträge
-  `workshops → <Code> → pins` und `pinFlags` löschen; danach kann die PIN neu
-  festgelegt werden.
+- Alles Weitere unter **⚙ Einstellungen** (Zahnrad oben rechts):
+  - **Meine PIN ändern** (aktuelle PIN + neue PIN) – meldet alle Geräte ab, die
+    mit der alten PIN angemeldet waren.
+  - **PIN für KÖ / SE festlegen bzw. zurücksetzen** – ein Admin für den anderen.
+    Für ein Kürzel ohne PIN ist die Anmeldung gesperrt.
+  - **Neuen Wiederherstellungs-Code erstellen** – der alte wird ungültig.
+  - **PIN vergessen?** – Kürzel wählen, Wiederherstellungs-Code und neue PIN
+    eingeben. Das Gerät ist danach als dieser Admin angemeldet; der Code ist
+    verbraucht, ein neuer wird angezeigt.
+- **Wiederherstellungs-Code:** wird beim Festlegen einer PIN **einmalig**
+  angezeigt (16 Zeichen, `XXXX-XXXX-XXXX-XXXX`) – aufschreiben! Wie die PIN liegt
+  er in Firebase nur als nicht lesbarer Prüfwert.
+- **PIN und Code vergessen, kein anderer Admin:** in der Firebase-Konsole unter
+  *Firestore Database* bei `workshops → <Code>` die Sammlungen `pins`,
+  `pinFlags` und `recoveries` löschen; danach kann die PIN neu festgelegt werden.
 
 > Eine 4-stellige PIN hält Kollegen ab, die einfach „SE“ antippen. Gegen
 > jemanden, der den Werkstatt-Code hat und gezielt per Programm alle
@@ -69,6 +76,9 @@ Ein Gerät bleibt angemeldet, bis es ein anderes Kürzel wählt.
 
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
+
+**Dunkelmodus.** ⚙ Einstellungen → *Darstellung*: Hell, Dunkel oder Automatisch
+(folgt der Geräteeinstellung). Gilt je Gerät; gedruckt wird immer hell.
 
 ### Monteure und Admins ändern
 

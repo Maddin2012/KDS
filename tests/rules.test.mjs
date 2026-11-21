@@ -84,6 +84,32 @@ await t('Danach kann ein anderes Mitglied keine „erste“ PIN mehr setzen (KÖ
 await t('… und die SE-PIN nicht überschreiben', assertFails(setDoc(doc(bb, 'workshops', W2, 'pins', 'SE'), { hash: pinHash(W2, 'SE', '0000') })));
 await t('KÖ kann sich ohne festgelegte KÖ-PIN nicht als Admin nachweisen', assertFails((async () => { const b = writeBatch(bb); b.set(doc(bb, 'workshops', W2, 'adminClaims', 'b'), { monteur: 'KÖ', hash: pinHash(W2, 'KÖ', '') }); b.set(doc(bb, 'workshops', W2, 'members', 'b'), { monteur: 'KÖ' }); await b.commit(); })()));
 
+// ---------- Wiederherstellungs-Code ----------
+const recHash = (wid, code, rc) => createHash('sha256').update(`kds-rec:${wid}:${code}:${rc}`).digest('hex');
+const W3 = 'RECOVERYWERKST03';
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  await setDoc(doc(db, 'workshops', W3), { name: 'R', members: { se: true, pe: true, ko: true } });
+  await setDoc(doc(db, 'workshops', W3, 'pins', 'SE'), { hash: pinHash(W3, 'SE', '1111') });
+  await setDoc(doc(db, 'workshops', W3, 'recoveries', 'SE'), { hash: recHash(W3, 'SE', 'ALTCODE') });
+  await setDoc(doc(db, 'workshops', W3, 'pins', 'KÖ'), { hash: pinHash(W3, 'KÖ', '3333') });
+  await setDoc(doc(db, 'workshops', W3, 'adminClaims', 'ko'), { monteur: 'KÖ', hash: pinHash(W3, 'KÖ', '3333') });
+});
+const reset = (db, rc, newPin, newRc) => { const b = writeBatch(db);
+  b.set(doc(db, 'workshops', W3, 'pins', 'SE'), { hash: pinHash(W3, 'SE', newPin), rec: recHash(W3, 'SE', rc) });
+  b.set(doc(db, 'workshops', W3, 'recoveries', 'SE'), { hash: recHash(W3, 'SE', newRc), prev: recHash(W3, 'SE', rc) });
+  return b.commit(); };
+const seR = env.authenticatedContext('se').firestore(), peR = env.authenticatedContext('pe').firestore(), koR = env.authenticatedContext('ko').firestore();
+await t('Wiederherstellungs-Codes sind nicht lesbar', assertFails(getDoc(doc(seR, 'workshops', W3, 'recoveries', 'SE'))));
+await t('PIN zurücksetzen mit falschem Code scheitert', assertFails(reset(peR, 'FALSCH', '9999', 'NEU1')));
+await t('Code erneuern ohne alten Code scheitert (Nicht-Admin)', assertFails(setDoc(doc(peR, 'workshops', W3, 'recoveries', 'SE'), { hash: recHash(W3, 'SE', 'X') })));
+await t('PIN zurücksetzen mit richtigem Code klappt', assertSucceeds(reset(seR, 'ALTCODE', '2721', 'NEUCODE')));
+await t('… danach Anmeldung mit neuer PIN', assertSucceeds((async () => { const b = writeBatch(seR); b.set(doc(seR, 'workshops', W3, 'adminClaims', 'se'), { monteur: 'SE', hash: pinHash(W3, 'SE', '2721') }); b.set(doc(seR, 'workshops', W3, 'members', 'se'), { monteur: 'SE' }); await b.commit(); })()));
+await t('Alter Code ist danach verbraucht', assertFails(reset(peR, 'ALTCODE', '0000', 'NEU2')));
+await t('Admin KÖ setzt PIN von SE zurück (anderer Admin)', assertSucceeds(setDoc(doc(koR, 'workshops', W3, 'pins', 'SE'), { hash: pinHash(W3, 'SE', '4444') })));
+await t('Admin KÖ erstellt neuen Code für SE', assertSucceeds(setDoc(doc(koR, 'workshops', W3, 'recoveries', 'SE'), { hash: recHash(W3, 'SE', 'KOCODE') })));
+await t('Nicht-Admin kann keine PIN ohne Code setzen', assertFails(setDoc(doc(peR, 'workshops', W3, 'pins', 'SE'), { hash: pinHash(W3, 'SE', '5555') })));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

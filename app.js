@@ -37,6 +37,16 @@ const S = {
 /* Admin-Rechte nur mit gültigem PIN-Nachweis – nicht schon durch das Kürzel */
 const amAdmin = () => isAdmin(S.me) && !!S.claim && S.claim.monteur === S.me;
 
+/* Die Datenbank hat einen Admin-Vorgang abgelehnt – meist weil die PIN inzwischen
+   (auf einem anderen Gerät) geändert oder zurückgesetzt wurde. Admin-Rechte hier aufheben. */
+function adminRejected() {
+  S.claim = null;
+  if (S.edit) { S.edit = false; S.editTpl = null; }
+  S.protoEdit = false;
+  render();
+  showToast(`PIN wurde geändert – bitte als ${S.me} neu anmelden (Ich bin → ${S.me})`);
+}
+
 const tplFor = (cat) => (S.templates[cat] && Array.isArray(S.templates[cat].groups)) ? S.templates[cat] : defaultTemplate(cat);
 const draftKey = (cat) => 'kds_draft_' + cat;
 function loadDraft(cat) {
@@ -268,7 +278,7 @@ function templateChanged(immediate) {
     const tpl = cleanTemplate(S.editTpl);
     S.templates[S.cat] = { ...tpl, updatedBy: S.me };
     S.store.saveTemplate(S.cat, tpl, S.me).catch(err => {
-      showToast(err && err.code === 'permission-denied' ? 'Keine Berechtigung zum Ändern der Vorlage' : 'Speichern fehlgeschlagen');
+      if (err && err.code === 'permission-denied') adminRejected(); else showToast('Speichern fehlgeschlagen');
     });
   };
   if (immediate) doSave(); else saveTimer = setTimeout(doSave, 700);
@@ -488,7 +498,7 @@ async function saveProtocolEdit() {
     render();
     showToast('Protokoll gespeichert');
   } catch (e) {
-    showToast(e && e.code === 'permission-denied' ? 'Keine Berechtigung – bitte als Admin mit PIN anmelden' : 'Speichern fehlgeschlagen');
+    if (e && e.code === 'permission-denied') adminRejected(); else showToast('Speichern fehlgeschlagen');
   } finally { btn.disabled = false; }
 }
 
@@ -551,7 +561,7 @@ function pinFormHtml(code, mode) {
   const name = monteurLabel(code);
   if (mode === 'missing') {
     return `<h3>${esc(name)} 🔒</h3>
-      <p>Für ${esc(code)} ist noch keine PIN festgelegt. Ein Admin kann sie unter „Ich bin“ → „Admin-PINs“ festlegen. Bis dahin bitte ein anderes Kürzel wählen.</p>
+      <p>Für ${esc(code)} ist noch keine PIN festgelegt. Ein Admin kann sie unter ⚙ Einstellungen → „PIN“ festlegen. Bis dahin bitte ein anderes Kürzel wählen.</p>
       <div class="setup-back"><button class="link-btn" data-x="back" type="button">← Zurück</button></div>`;
   }
   const two = mode !== 'enter';
@@ -572,16 +582,172 @@ function pinFormHtml(code, mode) {
     <div class="setup-back"><button class="link-btn" data-x="back" type="button">← Zurück</button></div>`;
 }
 
-function adminPinsHtml() {
-  if (!amAdmin()) return '';
-  return `
-    <div class="invite-box">
-      <h3>Admin-PINs</h3>
-      <p>PINs für die Admins festlegen oder ändern.</p>
-      <div class="invite-row" style="justify-content:flex-start">
-        ${ADMINS.map(c => `<button class="btn-sec" data-pin="${esc(c)}" type="button">${S.pinFlags[c] ? 'PIN ändern' : 'PIN festlegen'}: ${esc(c)}</button>`).join('')}
+/* ---------- Wiederherstellungs-Code einmalig anzeigen ---------- */
+function showRecovery(code, rc, ov) {
+  return new Promise(resolve => {
+    ov = ov || $('setup');
+    ov.innerHTML = `<div class="setup-card">${cardHead}
+      <h3>Wiederherstellungs-Code für ${esc(code)}</h3>
+      <p>Damit lässt sich die PIN zurücksetzen, falls sie vergessen wird (⚙ Einstellungen → „PIN vergessen?“).
+      <b>Jetzt aufschreiben und sicher aufbewahren</b> – der Code wird nur dieses eine Mal angezeigt.</p>
+      <div class="rec-code" id="rec-code">${rc.split('-').map(g => `<span>${esc(g)}</span>`).join('<i>-</i>')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn-sec" type="button" data-r="copy">📋 Kopieren</button>
       </div>
+      <button class="btn-big" type="button" data-r="ok">Ich habe den Code notiert</button>
     </div>`;
+    ov.classList.remove('hidden');
+    const prevClick = ov.onclick, prevSubmit = ov.onsubmit;
+    ov.onsubmit = null;
+    ov.onclick = async (e) => {
+      const r = e.target.closest('[data-r]');
+      if (!r) return;
+      if (r.dataset.r === 'copy') {
+        try { await navigator.clipboard.writeText(rc); showToast('Code kopiert'); } catch (err) { showToast('Bitte abschreiben'); }
+        return;
+      }
+      ov.onclick = prevClick; ov.onsubmit = prevSubmit;
+      resolve();
+    };
+  });
+}
+
+/* ---------- Dunkelmodus ---------- */
+const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function themePref() { return lsGet('kds_theme', 'auto'); }
+function applyTheme() {
+  const pref = themePref();
+  const dark = pref === 'dark' || (pref === 'auto' && darkQuery && darkQuery.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+
+/* ---------- Einstellungen (Zahnrad oben rechts) ---------- */
+function openSettings() {
+  const ov = $('setup');
+  let screen = 'main', ctx = {};
+  const others = () => ADMINS.filter(c => c !== S.me);
+  const pinField = (id, label, auto) => `<div class="field"><label for="${id}">${label}</label>
+      <input id="${id}" class="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="${auto || 'off'}"></div>`;
+  const back = '<div class="setup-back"><button class="link-btn" data-s="main" type="button">← Zurück</button></div>';
+
+  const html = () => {
+    if (screen === 'change') return `<h3>Meine PIN ändern (${esc(S.me)})</h3>
+      <p>Geräte, die mit der alten PIN angemeldet sind, verlieren dabei ihre Admin-Rechte.</p>
+      <form id="set-form" novalidate>${pinField('old-pin', 'Aktuelle PIN', 'current-password')}${pinField('new-pin1', 'Neue PIN', 'new-password')}${pinField('new-pin2', 'Neue PIN wiederholen', 'new-password')}
+      <button class="btn-big" type="submit">PIN ändern</button><div class="setup-err" id="set-err"></div></form>${back}`;
+    if (screen === 'other') return `<h3>PIN für ${esc(ctx.code)} ${S.pinFlags[ctx.code] ? 'zurücksetzen' : 'festlegen'}</h3>
+      <p>Neue PIN für ${esc(monteurLabel(ctx.code))}. Danach wird ein Wiederherstellungs-Code für ${esc(ctx.code)} angezeigt – bitte an ${esc(ctx.code)} weitergeben.</p>
+      <form id="set-form" novalidate>${pinField('new-pin1', 'Neue PIN', 'new-password')}${pinField('new-pin2', 'Neue PIN wiederholen', 'new-password')}
+      <button class="btn-big" type="submit">PIN speichern</button><div class="setup-err" id="set-err"></div></form>${back}`;
+    if (screen === 'forgot') return `<h3>PIN vergessen?</h3>
+      <p>Mit dem Wiederherstellungs-Code, der beim Festlegen der PIN angezeigt wurde, eine neue PIN setzen.
+      Ohne Code: Der andere Admin kann die PIN unter ⚙ Einstellungen zurücksetzen.</p>
+      <form id="set-form" novalidate>
+        <div class="field"><label for="fg-code">Kürzel</label>
+          <select id="fg-code">${ADMINS.map(c => `<option value="${esc(c)}">${esc(monteurLabel(c))}</option>`).join('')}</select></div>
+        <div class="field"><label for="fg-rec">Wiederherstellungs-Code</label>
+          <input id="fg-rec" class="code" maxlength="24" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"></div>
+        ${pinField('new-pin1', 'Neue PIN', 'new-password')}${pinField('new-pin2', 'Neue PIN wiederholen', 'new-password')}
+        <button class="btn-big" type="submit">PIN zurücksetzen</button><div class="setup-err" id="set-err"></div></form>${back}`;
+    // Hauptseite
+    const t = themePref();
+    const admin = amAdmin();
+    const cloud = S.store && S.store.mode === 'cloud';
+    const myFlag = S.pinFlags[S.me] || {};
+    return `<h3>⚙ Einstellungen</h3>
+      <div class="set-section" style="border-top:0;margin-top:6px;padding-top:0">
+        <h4>Darstellung</h4>
+        <div class="seg" role="group" aria-label="Darstellung">
+          <button type="button" data-theme-set="light" class="${t === 'light' ? 'on' : ''}">☀︎ Hell</button>
+          <button type="button" data-theme-set="dark" class="${t === 'dark' ? 'on' : ''}">☾ Dunkel</button>
+          <button type="button" data-theme-set="auto" class="${t === 'auto' ? 'on' : ''}">Automatisch</button>
+        </div>
+        <p style="margin:6px 0 0;font-size:12px">„Automatisch“ folgt der Einstellung des Geräts. Gilt nur für dieses Gerät. Gedruckt wird immer hell.</p>
+      </div>
+      <div class="set-section">
+        <h4>PIN (Admins ${esc(ADMINS.join(', '))})</h4>
+        <div class="set-list">
+          ${admin ? `
+          <button class="set-btn" type="button" data-s="change">Meine PIN ändern <small>${esc(S.me)}</small></button>
+          <button class="set-btn" type="button" data-s="newrec">Neuen Wiederherstellungs-Code erstellen <small>${myFlag.rec ? 'ersetzt den alten' : 'noch keiner vorhanden'}</small></button>
+          ${others().map(c => `<button class="set-btn" type="button" data-s="other" data-code="${esc(c)}">PIN für ${esc(c)} ${S.pinFlags[c] ? 'zurücksetzen' : 'festlegen'} <small>${esc(monteurLabel(c))}</small></button>`).join('')}
+          ` : `<p style="margin:0 0 4px;font-size:13px">PIN ändern und für andere zurücksetzen können angemeldete Admins.</p>`}
+          <button class="set-btn" type="button" data-s="forgot">PIN vergessen? <small>mit Wiederherstellungs-Code</small></button>
+        </div>
+      </div>
+      ${cloud ? '' : '<p style="font-size:12px;margin-top:14px">Probemodus: Einstellungen gelten nur auf diesem Gerät.</p>'}
+      <div class="setup-back"><button class="link-btn" data-s="close" type="button">Schließen</button></div>`;
+  };
+  const draw = () => {
+    ov.innerHTML = `<div class="setup-card">${cardHead}${html()}</div>`;
+    ov.classList.remove('hidden');
+    const f = ov.querySelector('input'); if (f && screen !== 'main') f.focus();
+  };
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; };
+  draw();
+
+  ov.onclick = async (e) => {
+    const th = e.target.closest('[data-theme-set]');
+    if (th) { lsSet('kds_theme', th.dataset.themeSet); applyTheme(); draw(); return; }
+    const b = e.target.closest('[data-s]');
+    if (!b) return;
+    const go = b.dataset.s;
+    if (go === 'close') { close(); return; }
+    if (go === 'newrec') {
+      if (!amAdmin()) return;
+      if (!(await confirmModal(`Neuen Wiederherstellungs-Code für ${S.me} erstellen? Ein alter Code wird damit ungültig.`, 'Erstellen', false))) return;
+      try {
+        const rc = await S.store.createRecovery(S.me);
+        S.pinFlags = { ...S.pinFlags, [S.me]: { set: true, rec: true } };
+        await showRecovery(S.me, rc, ov);
+        screen = 'main'; draw();
+      } catch (err) { showToast(err.message || 'Das hat nicht geklappt'); }
+      return;
+    }
+    screen = go; ctx = { code: b.dataset.code };
+    draw();
+  };
+
+  ov.onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
+    const p1 = $('new-pin1').value.trim(), p2 = $('new-pin2').value.trim();
+    if (!PIN_RE.test(p1)) { err.textContent = 'Die neue PIN besteht aus 4 bis 12 Ziffern.'; return; }
+    if (p1 !== p2) { err.textContent = 'Die beiden Eingaben der neuen PIN stimmen nicht überein.'; return; }
+    btn.disabled = true; err.textContent = 'Wird geprüft …';
+    try {
+      if (screen === 'change') {
+        if (!amAdmin()) throw new Error('Bitte zuerst als Admin anmelden.');
+        const old = $('old-pin').value.trim();
+        await S.store.claimAdmin(S.me, old).catch(() => { throw new Error('Aktuelle PIN falsch.'); });
+        await S.store.setPin(S.me, p1);
+        const claim = await S.store.claimAdmin(S.me, p1);
+        setAdminMe(S.me, claim);
+        showToast('PIN geändert');
+      } else if (screen === 'other') {
+        if (!amAdmin()) throw new Error('Bitte zuerst als Admin anmelden.');
+        const rc = await S.store.setPin(ctx.code, p1, { recovery: true });
+        S.pinFlags = { ...S.pinFlags, [ctx.code]: { set: true, rec: true } };
+        await showRecovery(ctx.code, rc, ov);
+        showToast(`PIN für ${ctx.code} gespeichert`);
+      } else if (screen === 'forgot') {
+        const code = $('fg-code').value, rec = $('fg-rec').value;
+        if (rec.replace(/[^A-Za-z0-9]/g, '').length !== 16) throw new Error('Der Wiederherstellungs-Code hat 16 Zeichen.');
+        const res = await S.store.resetPinWithRecovery(code, rec, p1);
+        S.pinFlags = { ...S.pinFlags, [code]: { set: true, rec: true } };
+        if (S.edit) { flushTemplateSave(); S.edit = false; }
+        setAdminMe(code, res.claim);
+        await showRecovery(code, res.recovery, ov);
+        showToast(`Neue PIN für ${code} gesetzt – angemeldet als ${code}`);
+      }
+      screen = 'main'; draw();
+    } catch (ex) {
+      console.error(ex);
+      err.textContent = (ex && ex.message) || 'Das hat nicht geklappt.';
+      btn.disabled = false;
+    }
+  };
 }
 
 /* Auswahl „Ich bin“ als Dialog – Admins (SE, KÖ) nur mit PIN */
@@ -598,7 +764,6 @@ function pickMe(allowCancel = true, notice = '') {
         <h3>Wer bist du?</h3>
         <p>Gilt für dieses Gerät. Im Archiv steht dann, wer ein Protokoll abgeschlossen hat. 🔒 = nur mit PIN.</p>
         ${mePickerHtml(S.me)}
-        ${adminPinsHtml()}
         ${inviteHtml()}
         ${allowCancel ? '<div class="setup-back"><button class="link-btn" data-x="cancel" type="button">Schließen</button></div>' : ''}`);
     };
@@ -613,8 +778,6 @@ function pickMe(allowCancel = true, notice = '') {
       if (e.target.closest('[data-x="invite"]')) { invite(); return; }
       if (e.target.closest('[data-x="back"]')) { showPicker(); return; }
       if (e.target.closest('[data-x="cancel"]')) { close(null); return; }
-      const ap = e.target.closest('[data-pin]');
-      if (ap) { showPin(ap.dataset.pin, 'admin'); return; }
       const b = e.target.closest('.pick');
       if (!b) return;
       const code = b.dataset.code;
@@ -637,13 +800,15 @@ function pickMe(allowCancel = true, notice = '') {
       if (p1 !== p2) { err.textContent = 'Die beiden Eingaben stimmen nicht überein.'; return; }
       btn.disabled = true; err.textContent = 'Wird geprüft …';
       try {
+        let rc = null;
         if (mode === 'first' || mode === 'admin') {
-          await S.store.setPin(code, p1);
-          S.pinFlags = { ...S.pinFlags, [code]: true };
+          rc = await S.store.setPin(code, p1, { recovery: mode === 'first' });
+          S.pinFlags = { ...S.pinFlags, [code]: { set: true, rec: !!rc || !!(S.pinFlags[code] && S.pinFlags[code].rec) } };
         }
         if (mode === 'enter' || mode === 'first' || (mode === 'admin' && code === S.me)) {
           const claim = await S.store.claimAdmin(code, p1);
           setAdminMe(code, claim);
+          if (rc) await showRecovery(code, rc, ov);
           showToast(mode === 'enter' ? `Angemeldet als ${code}` : `PIN für ${code} gespeichert`);
           close(code);
           return;
@@ -733,7 +898,8 @@ function runSetup(message) {
             const mig = lsJson('kds_migrated_templates', {}) || {};
             CATEGORIES.forEach(c => { seed[c] = mig[c] || defaultTemplate(c); });
           }
-          await S.store.createWorkshop('Krandienst Schulz', me, seed, pin);
+          const res = await S.store.createWorkshop('Krandienst Schulz', me, seed, pin);
+          if (res && res.recovery) await showRecovery(me, res.recovery, ov);
         }
         S.me = me; lsSet('kds_me', me);
         if (isAdmin(me)) { S.claim = await S.store.getClaim(); S.pinFlags = await S.store.getPinFlags(); }
@@ -925,7 +1091,7 @@ const actions = {
     if (!p || !amAdmin()) return;
     if (!(await confirmModal(`Protokoll „${(p.header && p.header.fId) || ''}“ vom ${fmtDate(p)} endgültig löschen?`, 'Löschen'))) return;
     try { await S.store.deleteProtocol(p.id); S.view = 'archive'; S.openId = null; render(); showToast('Protokoll gelöscht'); }
-    catch (e) { showToast('Löschen fehlgeschlagen'); }
+    catch (e) { if (e && e.code === 'permission-denied') adminRejected(); else showToast('Löschen fehlgeschlagen'); }
   }
 };
 
@@ -955,6 +1121,7 @@ $('btn-side').addEventListener('click', () => {
   lsSet('kds_sidebar_collapsed', app.classList.contains('sidebar-collapsed'));
 });
 $('btn-me').addEventListener('click', () => pickMe(true));
+$('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 
@@ -1051,6 +1218,7 @@ function renderBuild() {
    Start
    ===================================================================== */
 async function start() {
+  applyTheme();
   renderBuild();
   // Seitenleiste: gemerkter Zustand; auf dem Handy standardmäßig eingeklappt
   const sideState = lsGet('kds_sidebar_collapsed', null);

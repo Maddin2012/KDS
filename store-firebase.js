@@ -32,6 +32,13 @@ function withTimeout(promise, ms, msg) {
     .finally(() => clearTimeout(t));
 }
 
+/* Wiederherstellungs-Code: 16 Zeichen ohne verwechselbare Zeichen, als XXXX-XXXX-XXXX-XXXX */
+export function newRecoveryCode() {
+  const a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return Array.from(a, b => CODE_CHARS[b % CODE_CHARS.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
+}
+
 export function normalizeCode(c) {
   return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -107,9 +114,10 @@ export function createCloudStore(cfg) {
         name: name || 'Werkstatt', members: { [uid]: true }, createdAt: serverTimestamp()
       });
       wid = code;
+      let recovery = null;
       if (ADMINS.includes(me)) {
         await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: '', updatedAt: serverTimestamp() });
-        await this.setPin(me, pin);
+        recovery = await this.setPin(me, pin, { recovery: true });
         await this.claimAdmin(me, pin);
       } else {
         await setDoc(doc(db, 'workshops', code, 'members', uid), { monteur: me, updatedAt: serverTimestamp() });
@@ -121,7 +129,7 @@ export function createCloudStore(cfg) {
         }
       }
       localStorage.setItem(K_WS, code);
-      return code;
+      return { code, recovery };
     },
 
     async joinWorkshop(rawCode, me, pin) {
@@ -151,17 +159,20 @@ export function createCloudStore(cfg) {
     /* ---------- PIN-Schutz für Admins ---------- */
     pinHash(code, pin) { return sha256hex(`kds:${wid}:${code}:${pin}`); },
 
+    recHash(code, rc) { return sha256hex(`kds-rec:${wid}:${code}:${normalizeCode(rc)}`); },
+
+    /* { SE: { set: true, rec: true }, … } – ob PIN bzw. Wiederherstellungs-Code existieren */
     async getPinFlags() {
       const qs = await getDocs(sub('pinFlags'));
       const out = {};
-      qs.forEach(d => { out[d.id] = true; });
+      qs.forEach(d => { out[d.id] = { set: true, rec: !!d.data().rec }; });
       return out;
     },
 
     onPinFlags(cb) {
       return onSnapshot(sub('pinFlags'), (qs) => {
         const out = {};
-        qs.forEach(d => { out[d.id] = true; });
+        qs.forEach(d => { out[d.id] = { set: true, rec: !!d.data().rec }; });
         cb(out);
       }, (err) => console.error(err));   // z. B. alte Firebase-Regeln: kein Zugriffsverlust
     },
@@ -171,18 +182,60 @@ export function createCloudStore(cfg) {
       catch (e) { return null; }
     },
 
-    /* PIN festlegen oder ändern (Admin, oder allererste PIN der Werkstatt) */
-    async setPin(code, pin) {
+    /* PIN festlegen oder ändern (Admin, oder allererste PIN der Werkstatt).
+       Mit { recovery: true } wird zugleich ein neuer Wiederherstellungs-Code erzeugt
+       und zurückgegeben (nur dieses eine Mal sichtbar). */
+    async setPin(code, pin, opts = {}) {
       if (!navigator.onLine) throw new Error('Zum Festlegen der PIN wird Internet gebraucht.');
       const hash = await this.pinHash(code, pin);
       const b = writeBatch(db);
       b.set(doc(db, 'workshops', wid, 'pins', code), { hash });
-      b.set(doc(db, 'workshops', wid, 'pinFlags', code), { set: true, at: serverTimestamp() });
+      let rc = null;
+      if (opts.recovery) {
+        rc = newRecoveryCode();
+        b.set(doc(db, 'workshops', wid, 'recoveries', code), { hash: await this.recHash(code, rc) });
+      }
+      b.set(doc(db, 'workshops', wid, 'pinFlags', code), { set: true, at: serverTimestamp(), ...(rc ? { rec: true } : {}) }, { merge: true });
       try { await withTimeout(b.commit(), 15000, 'Keine Verbindung zur Datenbank.'); }
       catch (e) {
         if (e && e.code === 'permission-denied') throw new Error('PIN konnte nicht gespeichert werden (keine Berechtigung). Sind die Firebase-Regeln aktuell?');
         throw e;
       }
+      return rc;
+    },
+
+    /* Neuen Wiederherstellungs-Code erzeugen (Admin) – der alte wird ungültig */
+    async createRecovery(code) {
+      if (!navigator.onLine) throw new Error('Dafür wird Internet gebraucht.');
+      const rc = newRecoveryCode();
+      const b = writeBatch(db);
+      b.set(doc(db, 'workshops', wid, 'recoveries', code), { hash: await this.recHash(code, rc) });
+      b.set(doc(db, 'workshops', wid, 'pinFlags', code), { rec: true }, { merge: true });
+      try { await withTimeout(b.commit(), 15000, 'Keine Verbindung zur Datenbank.'); }
+      catch (e) {
+        if (e && e.code === 'permission-denied') throw new Error('Keine Berechtigung. Sind die Firebase-Regeln aktuell?');
+        throw e;
+      }
+      return rc;
+    },
+
+    /* PIN vergessen: mit Wiederherstellungs-Code neue PIN setzen. Der Code wird
+       dabei verbraucht und durch einen neuen ersetzt (Rückgabewert). */
+    async resetPinWithRecovery(code, rc, newPin) {
+      if (!navigator.onLine) throw new Error('Dafür wird Internet gebraucht.');
+      const oldRec = await this.recHash(code, rc);
+      const nextRc = newRecoveryCode();
+      const b = writeBatch(db);
+      b.set(doc(db, 'workshops', wid, 'pins', code), { hash: await this.pinHash(code, newPin), rec: oldRec });
+      b.set(doc(db, 'workshops', wid, 'recoveries', code), { hash: await this.recHash(code, nextRc), prev: oldRec });
+      b.set(doc(db, 'workshops', wid, 'pinFlags', code), { set: true, rec: true, at: serverTimestamp() }, { merge: true });
+      try { await withTimeout(b.commit(), 15000, 'Keine Verbindung zur Datenbank.'); }
+      catch (e) {
+        if (e && e.code === 'permission-denied') throw new Error('Wiederherstellungs-Code falsch – oder für dieses Kürzel gibt es keinen.');
+        throw e;
+      }
+      const claim = await this.claimAdmin(code, newPin);
+      return { recovery: nextRc, claim };
     },
 
     /* Mit PIN als Admin nachweisen – die Datenbank-Regeln prüfen den Wert */
