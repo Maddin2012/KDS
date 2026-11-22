@@ -132,7 +132,8 @@ function renderNav() {
   $('fleet-count').textContent = S.vehicles.length;
 
   const meBtn = $('btn-me');
-  meBtn.innerHTML = S.me ? esc(monteurLabel(S.me)) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
+  meBtn.innerHTML = S.me ? esc(S.me) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
+  meBtn.title = S.me ? monteurLabel(S.me) : '';
 
 }
 
