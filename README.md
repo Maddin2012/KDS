@@ -120,7 +120,7 @@ Lager-Historie) und im Auftrag mit Menge, Datum und Kürzel aufgelistet – auch
 Ausdruck. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
 Aufträgen geht das nur noch für SE und KÖ.
 
-**Bestellvorschläge.** *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
+**Bestellvorschläge** (nur SE und KÖ). *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
 dem Mindestbestand mit empfohlener Menge (auffüllen auf das Doppelte des
 Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.
 

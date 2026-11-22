@@ -172,6 +172,7 @@ function renderNav() {
   $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
   $('nav-stock').classList.toggle('active', S.view === 'stock' || S.view === 'article');
   $('nav-reorder').classList.toggle('active', S.view === 'reorder');
+  $('nav-reorder').classList.toggle('hidden', !amAdmin());
   $('stock-count').textContent = S.articles.length;
   const low = S.articles.filter(x => artStatus(x) !== 'ok').length;
   $('reorder-count').textContent = low;
@@ -1323,6 +1324,7 @@ function cleanTemplate(tpl) {
 
 /* ---------- Ansicht wechseln ---------- */
 function render() {
+  if (S.view === 'reorder' && !amAdmin()) S.view = 'stock';   // Bestellvorschläge nur für SE/KÖ
   if (S.view === 'list') {
     if (S.edit) renderEdit();
     else { renderFill(); applyHeader(draft.header); renderMonteure(); }
