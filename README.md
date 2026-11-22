@@ -100,7 +100,9 @@ Kennzeichen und Werk-Nr. erscheinen darunter und im Ausdruck. Beim
 
 **Lager.** Seitenleiste → *Lager* → **Artikel**: alle Artikel mit Bestand und
 Ampel (grün OK · orange = am/unter Mindestbestand · rot = leer), Suche sowie Filter
-nach Lagerort und Kategorie, oben der gesamte Lagerwert. Einen Artikel antippen –
+nach Lagerort und Kategorie. Admins sehen oben die Auswertung (Artikelzahl,
+Lagerwert, leer/nachbestellen) – bei „Alle Lagerorte“ für das gesamte Lager, sonst nur
+für den gewählten Lagerort (bzw. die Kategorie). Einen Artikel antippen –
 darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
 - **Buchen** (alle): Menge und Verwendungszweck/Auftrags-Nr. eintragen → **+ Zulauf**
   oder **− Entnahme**. Darunter die letzten drei Buchungen. Mehr entnehmen als da ist geht nicht. Jede Buchung steht mit

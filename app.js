@@ -349,12 +349,15 @@ function renderStock() {
     .filter(x => (!ort || x.lagerort === ort) && (!kat || x.kat === kat))
     .filter(x => !q || [x.sku, x.name, x.kat, x.lagerort, x.gebinde, x.notes, ...(x.suppliers || []).flatMap(s => [s.name, s.bestellNr])].join(' ').toLowerCase().includes(q))
     .sort((x, y) => deSort(x.name || '', y.name || ''));
-  const total = S.articles.reduce((s, x) => s + num(x.bestand) * num(x.preis), 0);
-  const leer = S.articles.filter(x => artStatus(x) === 'leer').length, low = S.articles.filter(x => artStatus(x) === 'niedrig').length;
-  $('stock-summary').innerHTML = S.articles.length ? `<div class="fleet-summary">
-      <span class="badge cat">${S.articles.length} Artikel · Lagerwert ${esc(fmtEuro(total))}</span>
+  // Auswertung (nur Admins): folgt Lagerort- und Kategorie-Filter, „Alle“ = gesamtes Lager
+  const scope = S.articles.filter(x => (!ort || x.lagerort === ort) && (!kat || x.kat === kat));
+  const total = scope.reduce((s, x) => s + num(x.bestand) * num(x.preis), 0);
+  const leer = scope.filter(x => artStatus(x) === 'leer').length, low = scope.filter(x => artStatus(x) === 'niedrig').length;
+  const where = [ort || 'Gesamtes Lager', kat].filter(Boolean).join(' · ');
+  $('stock-summary').innerHTML = amAdmin() && S.articles.length ? `<div class="fleet-summary">
+      <span class="badge cat">${esc(where)}: ${scope.length} Artikel · Lagerwert ${esc(fmtEuro(total))}</span>
       ${leer ? `<span class="badge bad">${leer} leer</span>` : ''}${low ? `<span class="badge pend">${low} nachbestellen</span>` : ''}
-      ${!leer && !low ? '<span class="badge ok">Alle Bestände ausreichend</span>' : ''}
+      ${scope.length && !leer && !low ? '<span class="badge ok">Alle Bestände ausreichend</span>' : ''}
     </div>` : '';
   if (!S.articles.length) {
     $('stock-list').innerHTML = `<div class="empty-note">Noch keine Artikel im Lager.<br>${amAdmin() ? 'Über „+ Artikel“ den ersten anlegen.' : 'Artikel legen die Admins (SE, KÖ) an.'}</div>`;
