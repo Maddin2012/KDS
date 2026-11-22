@@ -789,3 +789,46 @@
   .o-locked { margin:-4px 0 10px; font-size:13px; color:var(--steel); background:var(--line-2); border-radius:6px; padding:8px 10px }
   #view-order input:disabled, #view-order textarea:disabled, #view-order select:disabled { opacity:1; color:var(--text); background:transparent; cursor:default }
   #view-order .o-chip:disabled { cursor:default; opacity:.8 }
+
+  /* =====================================================================
+     Servicelisten auf dem Handy: feste, gleiche Spalten in allen Tabellen,
+     Bemerkung unter dem Prüfpunkt, lange Wörter umbrechen
+     ===================================================================== */
+  .service-table td.item-text { overflow-wrap:anywhere; hyphens:auto }
+  @media (max-width:640px) {
+    .st-fill, .st-proto { table-layout:fixed }
+    .st-fill thead tr, .st-fill tbody tr, .st-proto thead tr, .st-proto tbody tr { display:grid; align-items:center; column-gap:0 }
+    .st-fill thead, .st-fill tbody, .st-proto thead, .st-proto tbody { display:block }
+    .st-fill th, .st-fill td, .st-proto th, .st-proto td { display:block; padding:6px 2px !important; min-width:0 }
+    /* Ausfüllen: Aktiv | Prüfpunkt | i.O. | n.i.O. | beh. – Bemerkung darunter */
+    .st-fill thead tr, .st-fill tbody tr { grid-template-columns:34px minmax(0,1fr) 40px 44px 46px; grid-template-areas:"act text io nio beh" "act note note note note" }
+    .st-fill th:nth-child(1), .st-fill td:nth-child(1) { grid-area:act; text-align:center }
+    .st-fill th:nth-child(2), .st-fill td:nth-child(2) { grid-area:text }
+    .st-fill th:nth-child(3) { display:none }
+    .st-fill td:nth-child(3) { grid-area:note }
+    .st-fill th:nth-child(4), .st-fill td:nth-child(4) { grid-area:io; text-align:center }
+    .st-fill th:nth-child(5), .st-fill td:nth-child(5) { grid-area:nio; text-align:center }
+    .st-fill th:nth-child(6), .st-fill td:nth-child(6) { grid-area:beh; text-align:center }
+    /* Protokoll: Prüfpunkt | i.O. | n.i.O. | beh. – Bemerkung darunter */
+    .st-proto thead tr, .st-proto tbody tr { grid-template-columns:minmax(0,1fr) 40px 44px 46px; grid-template-areas:"text io nio beh" "note note note note" }
+    .st-proto th:nth-child(1), .st-proto td:nth-child(1) { grid-area:text }
+    .st-proto th:nth-child(2) { display:none }
+    .st-proto td:nth-child(2) { grid-area:note }
+    .st-proto th:nth-child(3), .st-proto td:nth-child(3) { grid-area:io; text-align:center }
+    .st-proto th:nth-child(4), .st-proto td:nth-child(4) { grid-area:nio; text-align:center }
+    .st-proto th:nth-child(5), .st-proto td:nth-child(5) { grid-area:beh; text-align:center }
+    .st-fill th, .st-proto th { font-size:10px; letter-spacing:.04em; border-bottom:0 }
+    .st-fill thead tr, .st-proto thead tr { border-bottom:1px solid var(--line) }
+    .st-fill tbody tr, .st-proto tbody tr { border-bottom:1px solid var(--line-2) }
+    .st-fill tbody td, .st-proto tbody td { border-bottom:0 }
+    /* Bemerkung: kleine Zeile unter dem Prüfpunkt, leer mit Hinweis */
+    .st-fill td.note { font-size:13px; color:var(--steel); min-height:26px; padding:2px 6px 6px !important; margin-top:-2px }
+    .st-fill td.note:empty::before { content:'+ Bemerkung'; color:var(--steel-2); font-size:12px }
+    .st-fill td.note:focus { color:var(--text) }
+    .st-fill td.note:focus:empty::before { content:'' }
+    .st-proto td.note-view:empty, .st-proto td.proto-note:empty:not(:focus) { padding:0 !important; min-height:0 }
+    .st-proto td.note-view, .st-proto td.proto-note { font-size:13px; color:var(--steel) }
+    .st-fill .chk-status, .st-proto .chk-status, .st-proto .chk-view { width:22px; height:22px }
+  }
+  /* Touch-Geräte: keine „hängende“ Zeilen-Hervorhebung nach dem Antippen */
+  @media (hover:none) { .service-table tr:hover td { background:transparent } }

@@ -206,7 +206,7 @@ function renderFill() {
             <span class="readonly-title">${esc(g.title)}</span>
           </div>
         </div>
-        <table class="service-table">
+        <table class="service-table st-fill">
           <thead><tr>
             <th class="col-toggle no-print" title="Zeile aktivieren/deaktivieren">Aktiv</th>
             <th class="col-desc">Prüfpunkt / Arbeitsschritt</th>
@@ -966,7 +966,7 @@ function renderProtocol() {
   $('proto-groups').innerHTML = (p.groups || []).map((g, gi) => `
     <div class="box">
       <div class="sec-title"><div class="title-left"><span class="readonly-title">${esc(g.title)}</span></div></div>
-      <table class="service-table">
+      <table class="service-table st-proto">
         <thead><tr>
           <th class="col-desc">Prüfpunkt / Arbeitsschritt</th><th class="col-note">Bemerkung / Zusatz</th>
           <th class="col-status">i.O.</th><th class="col-status">n.i.O.</th><th class="col-status">behoben</th>
@@ -975,7 +975,7 @@ function renderProtocol() {
           <tr data-g="${gi}" data-i="${ii}"><td class="item-text">${esc(i.text)}</td>
           <td contenteditable="true" class="editable-cell proto-note">${esc(i.note)}</td>
           <td class="center">${chkEdit(i.io, 'io')}</td><td class="center">${chkEdit(i.nio, 'nio')}</td><td class="center">${chkEdit(i.beh, 'beh')}</td></tr>` : `
-          <tr><td class="item-text">${esc(i.text)}</td><td>${esc(i.note)}</td>
+          <tr><td class="item-text">${esc(i.text)}</td><td class="note-view">${esc(i.note)}</td>
           <td class="center">${chk(i.io)}</td><td class="center">${chk(i.nio)}</td><td class="center">${chk(i.beh)}</td></tr>`).join('')}
         </tbody>
       </table>
