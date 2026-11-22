@@ -34,6 +34,7 @@ const S = {
   vehicles: [],             // Fuhrpark
   articles: [],             // Lager
   openArticleId: null,
+  expandedArt: null,
   artEdit: null,
   artDirty: false,
   bookings: [],
@@ -360,15 +361,53 @@ function renderStock() {
     return;
   }
   if (!list.length) { $('stock-list').innerHTML = '<div class="empty-note">Kein Artikel zu dieser Auswahl.</div>'; return; }
+  // offenes Buchungsfeld: Eingaben und Fokus über das Neuzeichnen retten
+  const keep = { qty: $('qd-qty') ? $('qd-qty').value : '', note: $('qd-note') ? $('qd-note').value : '', focus: document.activeElement && document.activeElement.id };
+  if (S.expandedArt && !list.some(x => x.id === S.expandedArt)) collapseArt();
   $('stock-list').innerHTML = list.map(x => `
-    <button class="arch-row art-row" data-aid="${esc(x.id)}" type="button">
+    <div class="art-item${S.expandedArt === x.id ? ' open' : ''}">
+    <button class="arch-row art-row" data-aid="${esc(x.id)}" type="button" aria-expanded="${S.expandedArt === x.id}">
       <span class="arch-main">
         <span class="veh">${esc(x.name || 'Ohne Bezeichnung')}</span>
         <span class="meta" style="display:block">${x.sku ? `<span class="mono">${esc(x.sku)}</span> · ` : ''}${esc([x.kat, x.lagerort, x.gebinde].filter(Boolean).join(' · '))}</span>
       </span>
       <span class="badges"><span class="art-qty">${esc(fmtNum(x.bestand))} ${esc(x.einheit || '')}</span>${artBadge(x)}</span>
-    </button>`).join('');
+    </button>${S.expandedArt === x.id ? quickBookHtml(x) : ''}</div>`).join('');
+  if ($('qd-qty')) {
+    $('qd-qty').value = keep.qty; $('qd-note').value = keep.note;
+    if (keep.focus === 'qd-qty' || keep.focus === 'qd-note') $(keep.focus).focus();
+    renderQuickHist();
+  }
 }
+/* Schnellbuchung direkt in der Liste (für alle); Admins kommen von hier zu den Stammdaten */
+function quickBookHtml(x) {
+  return `<div class="art-drop">
+      <div class="book-row qd-row">
+        <input id="qd-qty" class="o-field-in" inputmode="decimal" placeholder="Menge (${esc(x.einheit || 'Stk.')})" autocomplete="off">
+        <input id="qd-note" class="o-field-in" placeholder="Verwendungszweck / Auftrag-Nr. …" autocomplete="off">
+        <button class="btn-sec btn-in" data-act="qbook-in" type="button">+ Zulauf</button>
+        <button class="btn-sec btn-danger" data-act="qbook-out" type="button">− Entnahme</button>
+      </div>
+      <div id="qd-hist" class="qd-hist"></div>
+      ${amAdmin() ? `<div class="qd-admin"><button class="btn-sec" data-act="open-article" data-aid="${esc(x.id)}" type="button">✎ Stammdaten &amp; Inventur</button></div>` : ''}
+    </div>`;
+}
+function renderQuickHist() {
+  const box = $('qd-hist'); if (!box) return;
+  const x = S.articles.find(y => y.id === S.expandedArt); if (!x) return;
+  box.innerHTML = S.bookings.length ? '<span class="qd-label">Letzte Buchungen</span>' + S.bookings.slice(0, 3).map(b => {
+    const m = num(b.menge), sign = b.typ === 'Zulauf' ? '+' : b.typ === 'Entnahme' ? '−' : (m >= 0 ? '+' : '−');
+    return `<div class="qd-h h-${esc(b.typ)}"><span>${esc(new Date(b.ts || 0).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</span>
+      <b class="mono">${sign}${esc(fmtNum(Math.abs(m)))} ${esc(x.einheit || '')}</b><span class="qd-g">${esc(b.grund || b.typ)}</span><span>${esc(b.von || '')}</span></div>`;
+  }).join('') : '<span class="qd-label">Noch keine Buchungen</span>';
+}
+function toggleArt(id) {
+  if (S.expandedArt === id) { collapseArt(); }
+  else { S.expandedArt = id; subscribeBookings(id); }
+  renderStock();
+  if (S.expandedArt) { const q = $('qd-qty'); if (q) { q.closest('.art-item').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); if (window.innerWidth > 940) q.focus(); } }
+}
+function collapseArt() { S.expandedArt = null; if (S.view !== 'article') closeArticleSubs(); }
 
 /* ---------- Ein Artikel ---------- */
 let unsubBookings = null;
@@ -376,7 +415,7 @@ function closeArticleSubs() { if (unsubBookings) { unsubBookings(); unsubBooking
 function subscribeBookings(aid) {
   if (unsubBookings) unsubBookings();
   S.bookings = [];
-  unsubBookings = S.store.onBookings(aid, (list) => { S.bookings = list; if (S.view === 'article' && S.openArticleId === aid) renderHistory(); });
+  unsubBookings = S.store.onBookings(aid, (list) => { S.bookings = list; if (S.view === 'article' && S.openArticleId === aid) renderHistory(); if (S.view === 'stock' && S.expandedArt === aid) renderQuickHist(); });
 }
 function openArticle(id) {
   const x = S.articles.find(y => y.id === id);
@@ -552,14 +591,15 @@ function saveArtNow() {
 }
 function flushArtSave() { if (artSaveTimer) saveArtNow(); }
 
-async function doBooking(typ) {
-  const x = S.artEdit; if (!x) return;
-  const qty = num($('bk-qty').value);
-  if (!(qty > 0)) { showToast('Bitte eine Menge größer 0 eingeben'); $('bk-qty').focus(); return; }
-  const grund = $('bk-note').value.trim();
+async function doBooking(typ, quick) {
+  const x = quick ? S.articles.find(y => y.id === S.expandedArt) : S.artEdit; if (!x) return;
+  const qEl = $(quick ? 'qd-qty' : 'bk-qty'), nEl = $(quick ? 'qd-note' : 'bk-note');
+  const qty = num(qEl.value);
+  if (!(qty > 0)) { showToast('Bitte eine Menge größer 0 eingeben'); qEl.focus(); return; }
+  const grund = nEl.value.trim();
   try {
     const neu = await S.store.book(x.id, { typ, menge: qty, grund }, S.me);
-    $('bk-qty').value = ''; $('bk-note').value = '';
+    if ($(qEl.id)) $(qEl.id).value = ''; if ($(nEl.id)) $(nEl.id).value = '';
     showToast(`${typ === 'Zulauf' ? 'Zulauf' : 'Entnahme'} gebucht – Bestand ${fmtNum(neu)} ${x.einheit}`);
   } catch (e) {
     if (e && e.code === 'zu-wenig') showToast(`Nur ${fmtNum(e.bestand)} ${x.einheit} am Lager – Entnahme nicht gebucht`);
@@ -2132,6 +2172,9 @@ const actions = {
   'new-article': () => newArticle(),
   'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
   'book-in': () => doBooking('Zulauf'),
+  'qbook-in': () => doBooking('Zulauf', true),
+  'qbook-out': () => doBooking('Entnahme', true),
+  'open-article': (btn) => { if (amAdmin()) openArticle(btn.dataset.aid); },
   'book-out': () => doBooking('Entnahme'),
   'book-fix': () => doInventur(),
   'delete-article': () => deleteArticle(),
@@ -2207,14 +2250,19 @@ document.addEventListener('click', (e) => {
     else if (nav.dataset.view === 'fleet') { flushTemplateSave(); flushOrderSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.view = 'orders'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'stock' || nav.dataset.view === 'reorder') {
-      flushTemplateSave(); flushOrderSave(); flushArtSave(); closeArticleSubs();
+      flushTemplateSave(); flushOrderSave(); flushArtSave(); S.expandedArt = null; closeArticleSubs();
       S.view = nav.dataset.view; render(); window.scrollTo(0, 0);
     }
     if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
     return;
   }
   const arow = e.target.closest('.art-row');
-  if (arow) { openArticle(arow.dataset.aid); return; }
+  if (arow) {
+    if (S.view === 'stock') toggleArt(arow.dataset.aid);
+    else if (amAdmin()) openArticle(arow.dataset.aid);
+    else { $('stock-search').value = ''; $('stock-ort').value = ''; $('stock-kat').value = ''; S.view = 'stock'; S.expandedArt = null; render(); toggleArt(arow.dataset.aid); }
+    return;
+  }
   const orow = e.target.closest('.order-row');
   if (orow) { openOrder(orow.dataset.oid); return; }
   const vrow = e.target.closest('.fleet-row');
@@ -2375,7 +2423,7 @@ function applyNav(nav) {
       const ar = S.articles.find(x => x.id === nav.artId);
       if (ar) { S.openArticleId = ar.id; S.artEdit = normalizeArticle(ar); S.artDirty = false; subscribeBookings(ar.id); }
       else { S.view = 'stock'; S.openArticleId = null; }
-    } else { closeArticleSubs(); }
+    } else { S.expandedArt = null; closeArticleSubs(); }
     if (S.view === 'order') {
       const o = S.orders.find(x => x.id === nav.orderId);
       if (o) { S.openOrderId = o.id; S.orderEdit = normalizeOrder(o); S.orderDirty = false; } else { S.view = 'orders'; S.openOrderId = null; }

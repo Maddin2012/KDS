@@ -100,12 +100,14 @@ Kennzeichen und Werk-Nr. erscheinen darunter und im Ausdruck. Beim
 
 **Lager.** Seitenleiste → *Lager* → **Artikel**: alle Artikel mit Bestand und
 Ampel (grün OK · orange = am/unter Mindestbestand · rot = leer), Suche sowie Filter
-nach Lagerort und Kategorie, oben der gesamte Lagerwert. Einen Artikel antippen:
-- **Buchen** (alle): Menge und Grund/Auftrags-Nr. eintragen → **+ Zulauf** oder
-  **− Entnahme**. Mehr entnehmen als da ist geht nicht. Jede Buchung steht mit
+nach Lagerort und Kategorie, oben der gesamte Lagerwert. Einen Artikel antippen –
+darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
+- **Buchen** (alle): Menge und Verwendungszweck/Auftrags-Nr. eintragen → **+ Zulauf**
+  oder **− Entnahme**. Darunter die letzten drei Buchungen. Mehr entnehmen als da ist geht nicht. Jede Buchung steht mit
   Datum und Kürzel in der **Historie**. Buchen braucht Internet, damit zwei
   Geräte nicht gleichzeitig denselben Bestand verbuchen.
-- **Stammdaten, Lieferanten, Bemerkungen** ändern sowie **Inventur**
+- Admins haben im Feld zusätzlich **„✎ Stammdaten & Inventur“**: öffnet den Artikel
+  mit voller Historie. **Stammdaten, Lieferanten, Bemerkungen** ändern sowie **Inventur**
   (gezählten Bestand festlegen) und Löschen: nur Admins. Neue Kategorien und
   Lagerorte legen Admins direkt in der Auswahl an („+ Neue …“).
 

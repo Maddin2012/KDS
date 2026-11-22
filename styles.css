@@ -885,3 +885,22 @@
   .hist-table th, .sup-table th { text-align:left }
   .arch-row.art-row { grid-template-columns:1fr auto }
   .art-row .meta .mono { font-family:'IBM Plex Mono',monospace; color:var(--text) }
+  /* Lager: aufklappbare Schnellbuchung */
+  .art-item { border-radius:8px }
+  .art-item.open { box-shadow:0 0 0 1px var(--orange); background:var(--surface) }
+  .art-item.open .art-row { border-color:transparent; box-shadow:none; border-radius:8px 8px 0 0 }
+  .art-drop { padding:4px 16px 14px; border-top:1px dashed var(--line); animation:artDrop .15s ease-out }
+  @keyframes artDrop { from { opacity:0; transform:translateY(-4px) } to { opacity:1; transform:none } }
+  .qd-row { margin-top:10px; grid-template-columns:140px 1fr auto auto }
+  .qd-hist { margin-top:10px; display:flex; flex-direction:column; gap:3px; font-size:13px; color:var(--steel) }
+  .qd-label { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.08em; font-size:11px; font-weight:700 }
+  .qd-h { display:grid; grid-template-columns:110px 90px 1fr auto; gap:8px }
+  .qd-h b { font-family:'IBM Plex Mono',monospace; font-weight:600 }
+  .qd-h.h-Zulauf b { color:var(--done) } .qd-h.h-Entnahme b { color:#b42318 } .qd-h.h-Korrektur b { color:var(--orange-dk) }
+  .qd-g { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text) }
+  .qd-admin { margin-top:12px; display:flex; justify-content:flex-end }
+  @media (max-width:760px) {
+    .qd-row { grid-template-columns:1fr 1fr } .qd-row #qd-note { grid-column:1 / -1; order:-1 } .qd-row #qd-qty { grid-column:1 / -1; order:-2 }
+    .qd-h { grid-template-columns:auto auto 1fr; } .qd-h span:last-child { display:none }
+    .qd-admin .btn-sec { width:100% }
+  }
