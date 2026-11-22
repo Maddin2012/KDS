@@ -32,6 +32,10 @@ const S = {
   renderDeferred: false,
   protoEdit: false,         // abgeschlossenes Protokoll wird von Admin bearbeitet
   vehicles: [],             // Fuhrpark
+  orders: [],               // Werkstattaufträge
+  openOrderId: null,
+  orderEdit: null,          // Arbeitskopie des geöffneten Auftrags
+  orderDirty: false,
   claim: null,              // Admin-Nachweis dieses Geräts (nur mit richtiger PIN)
   pinFlags: {}              // für welche Admin-Kürzel eine PIN festgelegt ist
 };
@@ -106,6 +110,8 @@ function renderNav() {
   });
   $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
   $('nav-fleet').classList.toggle('active', S.view === 'fleet');
+  $('nav-orders').classList.toggle('active', S.view === 'orders' || S.view === 'order');
+  $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
   $('arch-count').textContent = S.protocols.length;
   $('fleet-count').textContent = S.vehicles.length;
 
@@ -126,19 +132,23 @@ function renderChrome() {
   let title;
   if (mode === 'archive') title = 'Archiv';
   else if (mode === 'fleet') title = 'Fuhrpark';
+  else if (mode === 'orders') title = 'Werkstattaufträge';
+  else if (mode === 'order') title = 'Auftrag ' + ((S.orderEdit && S.orderEdit.nr) || '');
   else if (mode === 'protocol' || mode === 'protoedit') {
     const p = S.protocols.find(x => x.id === S.openId);
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
-  $('sidebar-sub').textContent = mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-list').classList.toggle('hidden', S.view !== 'list');
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
-  $('cards').classList.toggle('hidden', mode === 'archive' || mode === 'edit' || mode === 'fleet');
+  $('view-orders').classList.toggle('hidden', S.view !== 'orders');
+  $('view-order').classList.toggle('hidden', S.view !== 'order');
+  $('cards').classList.toggle('hidden', ['archive', 'edit', 'fleet', 'orders', 'order'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
@@ -220,6 +230,276 @@ function syncHeaderVehicle() {
   if (v) { draft.header.vehId = v.id; draft.header.kz = v.kz || ''; draft.header.werk = v.werk || ''; draft.header.typ = v.typ || ''; }
   else { delete draft.header.vehId; delete draft.header.kz; delete draft.header.werk; delete draft.header.typ; }
   renderVehInfo(draft.header);
+}
+
+/* =====================================================================
+   Werkstattaufträge
+   ===================================================================== */
+const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
+  'rows', 'notes', 'crew', 'erstelltVon', 'source'];
+const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', fertig: 'Abgeschlossen' };
+const emptyOrderRow = () => ({ id: newId(), text: '', mat: '', h: '', done: false });
+const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const fmtHours = (n) => n.toFixed(1).replace('.', ',') + ' h';
+const orderHours = (o) => (o.rows || []).reduce((a, r) => a + num(r.h), 0);
+function pickOrder(o) { const d = {}; ORDER_FIELDS.forEach(f => { if (o[f] !== undefined) d[f] = o[f]; }); return d; }
+function normalizeOrder(o) {
+  const d = pickOrder(o);
+  d.id = o.id;
+  d.status = ORDER_STATUS[d.status] ? d.status : 'offen';
+  d.rows = Array.isArray(d.rows) && d.rows.length ? d.rows.map(r => ({ ...emptyOrderRow(), ...r })) : [emptyOrderRow()];
+  d.crew = Array.isArray(d.crew) ? d.crew : [];
+  ['fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum', 'notes'].forEach(f => { d[f] = d[f] || ''; });
+  return d;
+}
+const statusBadge = (st) => `<span class="badge st-${esc(st)}">${esc(ORDER_STATUS[st] || st)}</span>`;
+
+function renderOrders() {
+  if (S.ordersError) {
+    $('orders-list').innerHTML = `<div class="empty-note">${S.ordersError === 'rules'
+      ? '<b>Aufträge noch nicht freigeschaltet.</b><br>Die Firebase-Regeln werden beim nächsten Update eingespielt.'
+      : 'Die Aufträge konnten nicht geladen werden. Bitte später erneut versuchen.'}</div>`;
+    return;
+  }
+  const q = $('orders-search').value.trim().toLowerCase(), st = $('orders-status').value;
+  const list = S.orders
+    .filter(o => !st || (st === 'open' ? o.status !== 'fertig' : o.status === st))
+    .filter(o => !q || [o.nr, o.fahrzeug, o.code, o.kz, o.werk, o.notes, ...(o.crew || []).map(monteurLabel),
+      ...(o.rows || []).flatMap(r => [r.text, r.mat])].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => (b.created || 0) - (a.created || 0));
+  if (!list.length) {
+    $('orders-list').innerHTML = `<div class="empty-note">${S.orders.length
+      ? 'Keine Aufträge zu dieser Auswahl.' : 'Noch keine Werkstattaufträge.<br>Über „+ Neuer Auftrag“ den ersten anlegen.'}</div>`;
+    return;
+  }
+  $('orders-list').innerHTML = list.map(o => {
+    const done = (o.rows || []).filter(r => r.text && r.done).length, all = (o.rows || []).filter(r => r.text).length;
+    return `
+    <button class="arch-row order-row" data-oid="${esc(o.id)}" type="button">
+      <span class="arch-date">${esc(fmtDay(o.datum) || '')}</span>
+      <span class="arch-main">
+        <span class="veh"><span class="mono" style="font-size:14px">${esc(o.nr)}</span> · ${esc([o.code, o.fahrzeug].filter(Boolean).join(' · ') || '—')}</span>
+        <span class="meta" style="display:block">${esc([o.kz, all ? `${done}/${all} Positionen erledigt` : '', orderHours(o) ? fmtHours(orderHours(o)) : '',
+          (o.crew || []).join(', ')].filter(Boolean).join(' · '))}</span>
+      </span>
+      <span class="badges">${statusBadge(o.status)}${o._pending ? '<span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</span>
+    </button>`;
+  }).join('');
+}
+
+function openOrder(id) {
+  const o = S.orders.find(x => x.id === id);
+  if (!o) return;
+  flushOrderSave();
+  S.openOrderId = id; S.orderEdit = normalizeOrder(o); S.orderDirty = false;
+  S.view = 'order'; render(); window.scrollTo(0, 0);
+}
+
+function orderRowHtml(r, i) {
+  return `<tr data-rid="${esc(r.id)}" class="${r.done ? 'is-done' : ''}">
+    <td class="pos">${String(i + 1).padStart(2, '0')}</td>
+    <td><textarea class="o-ta" data-f="text" rows="1" placeholder="z. B. Hydrauliköl gewechselt, Filter erneuert">${esc(r.text)}</textarea></td>
+    <td><textarea class="o-ta" data-f="mat" rows="1" placeholder="Teile-Nr. / Menge">${esc(r.mat)}</textarea></td>
+    <td><input class="o-h" data-f="h" inputmode="decimal" placeholder="0,0" value="${esc(r.h)}"></td>
+    <td class="center"><input type="checkbox" class="chk-status" data-f="done" ${r.done ? 'checked' : ''} aria-label="erledigt"></td>
+    <td class="center no-print"><button class="btn-del-row" data-act="order-del-row" title="Position löschen">✕</button></td>
+  </tr>`;
+}
+
+function renderOrder() {
+  const o = S.orderEdit;
+  if (!o) { S.view = 'orders'; render(); return; }
+  const admin = amAdmin();
+  const vehLine = [o.kz, o.werk ? 'Werk-Nr. ' + o.werk : ''].filter(Boolean).join(' · ');
+  const created = o.created ? new Date(o.created).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const src = o.source ? S.protocols.find(p => p.id === o.source) : null;
+  $('view-order').innerHTML = `
+    <div class="proto-banner no-print">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn-sec" data-act="back-orders">← Alle Aufträge</button>
+        <span class="o-saved" id="o-saved"></span>
+      </div>
+      <div class="actions">
+        <select id="o-status" class="o-status" data-f="status" aria-label="Status">
+          ${Object.entries(ORDER_STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+        ${admin ? '<button class="btn-sec btn-danger" data-act="delete-order">🗑️ Löschen</button>' : ''}
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Auftrag <span class="mono" style="font-size:16px">${esc(o.nr)}</span></span></div>${statusBadge(o.status)}</div>
+      <div class="o-grid">
+        <div class="o-field o-veh">
+          <label>Fahrzeug</label>
+          <button type="button" class="o-veh-btn" data-act="order-vehicle" title="Fahrzeug ändern">
+            <b>${esc([o.code, o.fahrzeug].filter(Boolean).join(' · ') || 'Fahrzeug wählen …')}</b>
+            <small>${esc(vehLine)}</small>
+          </button>
+        </div>
+        <div class="o-field"><label for="o-km">Km-Stand</label><input id="o-km" data-f="km" inputmode="numeric" value="${esc(o.km)}" placeholder="0"></div>
+        <div class="o-field"><label for="o-ow">Std. OW</label><input id="o-ow" data-f="ow" inputmode="decimal" value="${esc(o.ow)}" placeholder="0"></div>
+        <div class="o-field"><label for="o-uw">Std. UW</label><input id="o-uw" data-f="uw" inputmode="decimal" value="${esc(o.uw)}" placeholder="0"></div>
+        <div class="o-field"><label for="o-datum">Datum</label><input id="o-datum" data-f="datum" type="date" value="${esc(o.datum)}"></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Durchgeführte Arbeiten</span></div></div>
+      <table class="service-table o-rows">
+        <thead><tr>
+          <th class="o-c-pos">Pos</th><th>Arbeit / Beschreibung</th><th class="o-c-mat">Material / Teile</th>
+          <th class="o-c-h">Std.</th><th class="col-status">Erl.</th><th class="col-act no-print"></th>
+        </tr></thead>
+        <tbody id="o-rows">${o.rows.map(orderRowHtml).join('')}</tbody>
+      </table>
+      <div class="box-actions" style="justify-content:space-between;align-items:center">
+        <button class="btn-sec no-print" data-act="order-add-row">+ Position</button>
+        <span class="o-sum">Summe Arbeitsstunden <b id="o-sum">${fmtHours(orderHours(o))}</b></span>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Bemerkungen / Mängel</span></div></div>
+      <textarea class="o-ta o-notes" data-f="notes" rows="3" placeholder="Auffälligkeiten, offene Punkte, Folgeauftrag …">${esc(o.notes)}</textarea>
+    </div>
+
+    <div class="box monteure">
+      <div class="sec-title"><div class="title-left"><span>Ausführende Mitarbeiter</span></div></div>
+      <div class="o-crew no-print" id="o-crew"></div>
+      <div class="ms-print" id="o-crew-print"></div>
+    </div>
+    <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
+      src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>`;
+  renderOrderCrew();
+  $('view-order').querySelectorAll('.o-ta').forEach(autoSize);
+  renderChrome();
+}
+function renderOrderCrew() {
+  const o = S.orderEdit;
+  $('o-crew').innerHTML = MONTEURE.map(m => `<button type="button" class="o-chip ${o.crew.includes(m.code) ? 'on' : ''}" data-act="order-crew" data-code="${esc(m.code)}">
+    <code>${esc(m.code)}</code>${esc(m.name)}</button>`).join('');
+  $('o-crew-print').textContent = o.crew.map(monteurLabel).join(', ') || '—';
+}
+function autoSize(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+
+function onOrderInput(t) {
+  const o = S.orderEdit, f = t.dataset.f;
+  if (!f) return;
+  const tr = t.closest('tr[data-rid]');
+  if (tr) {
+    const r = o.rows.find(x => x.id === tr.dataset.rid);
+    if (!r) return;
+    r[f] = t.type === 'checkbox' ? t.checked : t.value;
+    if (f === 'done') tr.classList.toggle('is-done', t.checked);
+    if (f === 'h') $('o-sum').textContent = fmtHours(orderHours(o));
+  } else {
+    o[f] = t.value;
+    if (f === 'status') { renderOrder(); }
+  }
+  if (t.tagName === 'TEXTAREA') autoSize(t);
+  queueOrderSave();
+}
+function addOrderRow() {
+  S.orderEdit.rows.push(emptyOrderRow());
+  renderOrder(); queueOrderSave();
+  const all = $('view-order').querySelectorAll('textarea[data-f="text"]');
+  all[all.length - 1].focus();
+}
+// Enter in „Arbeit“ = neue Position (Umschalt+Enter = neue Zeile im Feld)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && e.target.matches && e.target.matches('#view-order textarea[data-f="text"]')) {
+    e.preventDefault(); addOrderRow();
+  }
+});
+
+let orderSaveTimer = null;
+function queueOrderSave() {
+  S.orderDirty = true;
+  const el = $('o-saved'); if (el) el.textContent = 'wird gespeichert …';
+  clearTimeout(orderSaveTimer);
+  orderSaveTimer = setTimeout(saveOrderNow, 600);
+}
+function saveOrderNow() {
+  clearTimeout(orderSaveTimer); orderSaveTimer = null;
+  const o = S.orderEdit;
+  if (!o || !S.orderDirty) return;
+  S.orderDirty = false;
+  const data = pickOrder(o);
+  data.rows = o.rows.map(r => ({ id: r.id, text: r.text || '', mat: r.mat || '', h: r.h || '', done: !!r.done }));
+  const local = S.orders.find(x => x.id === o.id); if (local) Object.assign(local, data);
+  S.store.saveOrder(o.id, data, S.me)
+    .then(() => { const el = $('o-saved'); if (el && S.openOrderId === o.id && !S.orderDirty) el.textContent = 'gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); })
+    .catch(() => { S.orderDirty = true; const el = $('o-saved'); if (el) el.textContent = 'nicht gespeichert – erneuter Versuch …'; setTimeout(saveOrderNow, 3000); });
+  const el = $('o-saved'); if (el) el.textContent = navigator.onLine ? 'wird gespeichert …' : 'offline gespeichert – wird übertragen';
+}
+function flushOrderSave() { if (orderSaveTimer) saveOrderNow(); }
+window.addEventListener('pagehide', flushOrderSave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushOrderSave(); });
+
+/* Neuer Auftrag bzw. Fahrzeug wechseln: Fahrzeug aus dem Fuhrpark wählen */
+function openNewOrder(pre = {}) {
+  const ov = $('setup');
+  const change = !!pre.change;
+  const vehicles = sortVehicles(S.vehicles);
+  const curVeh = change ? (S.orderEdit && S.orderEdit.vehId) : pre.vehId;
+  const freeName = change ? (S.orderEdit && !S.orderEdit.vehId ? S.orderEdit.fahrzeug : '') : (!pre.vehId ? (pre.freeName || '') : '');
+  ov.innerHTML = `<div class="setup-card">${cardHead}
+    <h3>${change ? 'Fahrzeug ändern' : 'Neuer Werkstattauftrag'}</h3>
+    <p>${change ? 'Die Auftragsnummer bleibt unverändert.' : 'Fahrzeug wählen – Kennzeichen und Werk-Nr. werden übernommen. Die Nummer wird fortlaufend vergeben.'}
+      ${pre.rows && pre.rows.length ? `<br><b>${pre.rows.length} offene Mängel</b> werden als Positionen übernommen.` : ''}</p>
+    <form id="no-form" novalidate>
+      <div class="field"><label for="no-veh">Fahrzeug aus dem Fuhrpark</label>
+        <select id="no-veh">
+          ${vehicles.map(v => `<option value="${esc(v.id)}" ${v.id === curVeh ? 'selected' : ''}>${esc(vehicleLabel(v))}${v.kz ? ' · ' + esc(v.kz) : ''}</option>`).join('')}
+          <option value="" ${!curVeh && (freeName || !vehicles.length) ? 'selected' : ''}>— anderes Fahrzeug (nicht im Fuhrpark) —</option>
+        </select></div>
+      <div class="field" id="no-free-wrap"><label for="no-free">Fahrzeug (frei)</label>
+        <input id="no-free" value="${esc(freeName)}" placeholder="z. B. Werkstatt-Stapler" autocomplete="off"></div>
+      <button class="btn-big" type="submit">${change ? 'Übernehmen' : 'Auftrag anlegen'}</button>
+      <div class="setup-err" id="no-err"></div>
+    </form>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div>
+  </div>`;
+  ov.classList.remove('hidden');
+  const sync = () => { $('no-free-wrap').style.display = $('no-veh').value ? 'none' : ''; };
+  sync();
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.onchange = null; };
+  ov.onchange = (e) => { if (e.target.id === 'no-veh') sync(); };
+  ov.onclick = (e) => { if (e.target.closest('[data-n="close"]')) close(); };
+  ov.onsubmit = async (e) => {
+    e.preventDefault();
+    const v = S.vehicles.find(x => x.id === $('no-veh').value);
+    const free = $('no-free').value.trim();
+    if (!v && !free) { $('no-err').textContent = 'Bitte ein Fahrzeug wählen oder eintragen.'; return; }
+    const veh = v ? { vehId: v.id, fahrzeug: v.typ || '', code: v.code || '', werk: v.werk || '', kz: v.kz || '' }
+                  : { vehId: '', fahrzeug: free, code: '', werk: '', kz: '' };
+    if (change) {
+      Object.assign(S.orderEdit, veh); close(); renderOrder(); queueOrderSave(); return;
+    }
+    const btn = ov.querySelector('#no-form button[type="submit"]');
+    btn.disabled = true; $('no-err').textContent = 'Nummer wird vergeben …';
+    try {
+      const d = new Date(), ymd = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+      const prefix = String(veh.code || veh.fahrzeug || 'AUFTRAG').replace(/[\/\\.#$\[\]\s]+/g, '-').slice(0, 30);
+      const n = await S.store.nextOrderNr(prefix + '-' + ymd);
+      const o = normalizeOrder({
+        id: S.store.newOrderId(), nr: `${prefix}-${ymd}-${String(n).padStart(3, '0')}`, created: Date.now(), status: 'offen',
+        ...veh, km: pre.km || '', ow: pre.ow || '', uw: pre.uw || '', datum: todayIso(),
+        rows: pre.rows && pre.rows.length ? pre.rows : [emptyOrderRow()], notes: pre.notes || '',
+        crew: S.me ? [S.me] : [], erstelltVon: S.me || '', source: pre.source || ''
+      });
+      S.orders.unshift({ ...o });
+      S.store.saveOrder(o.id, pickOrder(o), S.me).catch(() => showToast('Auftrag konnte nicht gespeichert werden'));
+      close();
+      S.openOrderId = o.id; S.orderEdit = o; S.orderDirty = false; S.view = 'order'; render(); window.scrollTo(0, 0);
+      showToast('Auftrag ' + o.nr + ' angelegt');
+    } catch (err) {
+      console.error(err);
+      $('no-err').textContent = (err && err.message) || 'Auftrag konnte nicht angelegt werden.';
+      btn.disabled = false;
+    }
+  };
 }
 
 /* =====================================================================
@@ -469,6 +749,8 @@ function render() {
   } else if (S.view === 'archive') renderArchive();
   else if (S.view === 'protocol') renderProtocol();
   else if (S.view === 'fleet') renderFleet();
+  else if (S.view === 'orders') renderOrders();
+  else if (S.view === 'order') renderOrder();
   renderChrome();
 }
 
@@ -608,6 +890,7 @@ function renderProtocol() {
     + (editing ? '<br><b style="color:var(--orange-dk)">Bearbeiten – Kopfdaten, Haken, Bemerkungen und Monteure sind änderbar.</b>' : '');
   $('btn-del-proto').classList.toggle('hidden', !amAdmin() || editing);
   $('btn-edit-proto').classList.toggle('hidden', !amAdmin() || editing);
+  $('btn-proto-order').classList.toggle('hidden', editing || !protoStats(p).open);
   $('btn-back-proto').classList.toggle('hidden', editing);
   $('btn-save-proto').classList.toggle('hidden', !editing);
   $('btn-cancel-proto').classList.toggle('hidden', !editing);
@@ -1414,6 +1697,42 @@ const actions = {
     showToast(`„${title}“ kopiert – in einer anderen Kategorie einfügbar`);
   },
   'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
+  'new-order': () => openNewOrder(),
+  'back-orders': () => { flushOrderSave(); S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); },
+  'order-add-row': () => addOrderRow(),
+  'order-del-row': (btn) => {
+    const rid = btn.closest('tr').dataset.rid, o = S.orderEdit;
+    o.rows = o.rows.filter(r => r.id !== rid);
+    if (!o.rows.length) o.rows.push(emptyOrderRow());
+    renderOrder(); queueOrderSave();
+  },
+  'order-vehicle': () => openNewOrder({ change: true }),
+  'order-crew': (btn) => {
+    const c = btn.dataset.code, o = S.orderEdit;
+    o.crew = o.crew.includes(c) ? o.crew.filter(x => x !== c) : [...o.crew, c];
+    renderOrderCrew(); queueOrderSave();
+  },
+  'delete-order': async () => {
+    const o = S.orderEdit;
+    if (!o || !amAdmin()) return;
+    if (!(await confirmModal(`Auftrag ${o.nr} endgültig löschen?`, 'Löschen'))) return;
+    try {
+      clearTimeout(orderSaveTimer); S.orderDirty = false;
+      await S.store.deleteOrder(o.id);
+      S.view = 'orders'; S.openOrderId = null; S.orderEdit = null; render(); showToast('Auftrag gelöscht');
+    } catch (e) { if (e && e.code === 'permission-denied') adminRejected(); else showToast('Löschen fehlgeschlagen'); }
+  },
+  'order-from-protocol': () => {
+    const p = S.protocols.find(x => x.id === S.openId);
+    if (!p) return;
+    const rows = [];
+    (p.groups || []).forEach(g => g.items.forEach(i => {
+      if (i.nio && !i.beh) rows.push({ ...emptyOrderRow(), text: `${g.title}: ${i.text}${i.note ? ' – ' + i.note : ''}` });
+    }));
+    const h = p.header || {};
+    openNewOrder({ rows, vehId: h.vehId, freeName: h.fId, km: h.fKm, ow: h.fOw, uw: h.fUw,
+      notes: `Offene Mängel aus Serviceprotokoll ${p.category} vom ${fmtDate(p)}.`, source: p.id });
+  },
   'back-archive': () => { S.view = 'archive'; S.openId = null; S.protoEdit = false; render(); },
   'edit-protocol': () => { if (!amAdmin()) return; S.protoEdit = true; render(); },
   'save-protocol': saveProtocolEdit,
@@ -1436,10 +1755,13 @@ document.addEventListener('click', (e) => {
     if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
-    else if (nav.dataset.view === 'fleet') { flushTemplateSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'fleet') { flushTemplateSave(); flushOrderSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.view = 'orders'; render(); window.scrollTo(0, 0); }
     if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
     return;
   }
+  const orow = e.target.closest('.order-row');
+  if (orow) { openOrder(orow.dataset.oid); return; }
   const vrow = e.target.closest('.fleet-row');
   if (vrow) { openVehicle(vrow.dataset.vid); return; }
   const row = e.target.closest('.arch-row');
@@ -1460,6 +1782,8 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('orders-search').addEventListener('input', renderOrders);
+$('orders-status').addEventListener('change', renderOrders);
 
 /* Status-Logik i.O. / n.i.O. / behoben
    i.O. schließt n.i.O. und behoben aus; behoben setzt n.i.O.; n.i.O. abwählen nimmt behoben weg. */
@@ -1480,6 +1804,7 @@ function handleStatus(chk) {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (S.view === 'order' && S.orderEdit && t.closest('#view-order')) { onOrderInput(t); return; }
   if (S.view === 'protocol' && S.protoEdit) {
     if (t.classList.contains('chk-status')) applyStatusLogic(t);
     if (t.id === 'fDate') markEmptyDate();
@@ -1503,6 +1828,7 @@ document.addEventListener('change', (e) => {
 
 document.addEventListener('input', (e) => {
   const t = e.target;
+  if (S.view === 'order' && S.orderEdit && t.closest('#view-order')) { onOrderInput(t); return; }
   if (HEADER_FIELDS.includes(t.id)) {
     if (S.view !== 'list') return;
     draft.header[t.id] = t.value;
@@ -1613,6 +1939,24 @@ async function start() {
     const a = document.activeElement;
     if (a && a.isContentEditable && $('groups-container').contains(a)) { S.renderDeferred = true; return; }
     renderFill();
+  });
+  S.store.onOrders((list) => {
+    S.ordersError = false;
+    S.orders = list;
+    renderNav();
+    if (S.view === 'orders') renderOrders();
+    if (S.view === 'order' && S.openOrderId) {
+      const remote = list.find(o => o.id === S.openOrderId);
+      if (!remote) { S.view = 'orders'; S.openOrderId = null; S.orderEdit = null; render(); showToast('Der Auftrag wurde gelöscht'); return; }
+      const focused = document.activeElement && $('view-order').contains(document.activeElement);
+      if (!S.orderDirty && !focused && $('setup').classList.contains('hidden')
+          && JSON.stringify(pickOrder(remote)) !== JSON.stringify(pickOrder(S.orderEdit))) {
+        S.orderEdit = normalizeOrder(remote); renderOrder();
+      }
+    }
+  }, (err) => {
+    S.ordersError = err && err.code === 'permission-denied' ? 'rules' : 'other';
+    if (S.view === 'orders') renderOrders();
   });
   S.store.onVehicles((list) => {
     S.fleetError = false;

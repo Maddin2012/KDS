@@ -9,7 +9,7 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
-  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs
+  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs, runTransaction
 } from './vendor/firebase/firebase-firestore.js';
 import { ADMINS, TEXT_FIX_VERSION } from './data.js';
 
@@ -293,6 +293,32 @@ export function createCloudStore(cfg) {
       track(setDoc(ref, { ...p, createdAt: serverTimestamp() })).catch(() => {});
       return Promise.resolve(ref.id);
     },
+
+    /* ---------- Werkstattaufträge ---------- */
+    onOrders(cb, onErr) {
+      const q = query(sub('auftraege'), orderBy('created', 'desc'), limit(500));
+      return onSnapshot(q, { includeMetadataChanges: true }, (qs) => {
+        const list = [];
+        qs.forEach(d => list.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites }));
+        cb(list);
+      }, (err) => { console.error(err); if (onErr) onErr(err); });
+    },
+    /* Fortlaufende Nummer je Schlüssel (Fahrzeug + Tag) – Transaktion, keine Doppelvergabe */
+    async nextOrderNr(key) {
+      if (!navigator.onLine) throw new Error('Für die fortlaufende Auftragsnummer wird Internet gebraucht.');
+      const ref = doc(db, 'workshops', wid, 'zaehler', key);
+      return withTimeout(runTransaction(db, async (tx) => {
+        const s = await tx.get(ref);
+        const n = (s.exists() ? (s.data().n || 0) : 0) + 1;
+        tx.set(ref, { n });
+        return n;
+      }), 15000, 'Keine Verbindung zur Datenbank.');
+    },
+    newOrderId() { return doc(sub('auftraege')).id; },
+    saveOrder(id, data, by) {
+      return track(setDoc(doc(db, 'workshops', wid, 'auftraege', id), { ...data, updatedBy: by || '', updatedAt: serverTimestamp() }));
+    },
+    deleteOrder(id) { return track(deleteDoc(doc(db, 'workshops', wid, 'auftraege', id))); },
 
     /* ---------- Fuhrpark ---------- */
     onVehicles(cb, onErr) {

@@ -664,3 +664,70 @@
     .due.over, .due.soon { background:transparent; text-decoration:underline }
     #veh-info { font-size:10px }
   }
+
+  /* =====================================================================
+     Werkstattaufträge
+     ===================================================================== */
+  .badge.st-offen { background:var(--orange-lt); color:var(--orange-dk) }
+  .badge.st-arbeit { background:#e6effc; color:#1f5fbf }
+  .badge.st-fertig { background:#e3f4ec; color:var(--done) }
+  .o-saved { font-size:12px; color:var(--steel) }
+  .o-status { border:1px solid var(--line); border-radius:6px; padding:6px 10px; background:var(--surface); color:var(--text); font-size:14px }
+  .o-grid { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1.2fr; gap:10px }
+  .o-field label { display:block; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.1em;
+    font-size:11px; color:var(--steel); font-weight:700; margin-bottom:4px }
+  .o-field input { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px 10px; font-family:'IBM Plex Mono',monospace;
+    font-size:15px; background:var(--surface); color:var(--text) }
+  .o-field input:focus, .o-ta:focus, .o-h:focus { outline:none; border-color:var(--orange); box-shadow:0 0 0 2px var(--orange-lt) }
+  .o-veh-btn { width:100%; text-align:left; border:1px solid var(--line); border-radius:6px; padding:7px 10px; background:var(--surface);
+    color:var(--text); display:flex; flex-direction:column; min-height:42px }
+  .o-veh-btn:hover { border-color:var(--orange) }
+  .o-veh-btn small { color:var(--steel); font-size:12px }
+  .o-rows th.o-c-pos { width:44px } .o-rows th.o-c-mat { width:28% } .o-rows th.o-c-h { width:70px }
+  .o-rows td { vertical-align:top }
+  .o-rows td.pos { font-family:'IBM Plex Mono',monospace; color:var(--steel); padding-top:12px }
+  .o-ta, .o-h { width:100%; border:1px solid transparent; border-radius:4px; padding:6px 7px; background:transparent; color:var(--text);
+    font:inherit; font-size:14px; resize:none; overflow:hidden; line-height:1.4 }
+  .o-ta:hover, .o-h:hover { border-color:var(--line) }
+  .o-h { font-family:'IBM Plex Mono',monospace; text-align:right }
+  .o-rows tr.is-done td { background:#f3faf6 }
+  .o-rows tr.is-done .o-ta[data-f="text"] { color:var(--steel) }
+  .o-notes { border:1px solid var(--line); min-height:70px }
+  .o-sum { font-size:14px; color:var(--steel) } .o-sum b { color:var(--text); font-family:'IBM Plex Mono',monospace; margin-left:6px }
+  .o-crew { display:flex; flex-wrap:wrap; gap:6px }
+  .o-chip { border:1px solid var(--line); background:var(--surface); color:var(--text); border-radius:20px; padding:6px 12px; font-size:14px;
+    display:inline-flex; gap:6px; align-items:center }
+  .o-chip code { font-family:'IBM Plex Mono',monospace; font-weight:600 }
+  .o-chip.on { background:var(--orange); border-color:var(--orange-dk); color:#111213 }
+  @media (max-width:760px) {
+    .o-grid { grid-template-columns:1fr 1fr }
+    .o-veh { grid-column:1 / -1 }
+    .o-rows thead { display:none }
+    .o-rows, .o-rows tbody, .o-rows tr { display:block; width:100% }
+    .o-rows tr { display:grid !important; grid-template-columns:34px 1fr 70px 40px 30px; grid-template-areas:"pos text text text del" "pos mat h done del";
+      border-bottom:1px solid var(--line-2); padding:4px 0 }
+    .o-rows td { display:block; border:0 !important; padding:2px 4px !important }
+    .o-rows td.pos { grid-area:pos } .o-rows td:nth-child(2) { grid-area:text } .o-rows td:nth-child(3) { grid-area:mat }
+    .o-rows td:nth-child(4) { grid-area:h } .o-rows td:nth-child(5) { grid-area:done; padding-top:8px !important } .o-rows td:nth-child(6) { grid-area:del }
+  }
+  @media screen {
+    html[data-theme="dark"] .badge.st-arbeit { background:#1a2a44; color:#8fb6ff }
+    html[data-theme="dark"] .badge.st-fertig { background:#16352a; color:#6fdcaa }
+    html[data-theme="dark"] .badge.st-offen { background:#3b2a16; color:#ffb35c }
+    html[data-theme="dark"] .o-rows tr.is-done td { background:#18241e }
+  }
+  @media print {
+    .o-field input, .o-veh-btn, .o-notes { border:0 !important; padding:0 !important; box-shadow:none !important }
+    .o-ta, .o-h { border:0 !important; padding:0 !important }
+    .o-rows tr.is-done td { background:transparent }
+    .o-grid { grid-template-columns:2fr 1fr 1fr 1fr 1.2fr !important }
+    .o-field input::placeholder, .o-ta::placeholder, .o-h::placeholder { color:transparent }
+    .o-sum { font-size:12px }
+  }
+  .o-rows th { text-align:left }
+  .o-rows th.o-c-h, .o-rows th.col-status { text-align:center }
+  @media print {
+    .toast { display:none !important }
+    .o-field input::-webkit-calendar-picker-indicator { display:none }
+  }
+  @media (max-width:640px) { .hero h2 { font-size:22px; word-break:break-word } }

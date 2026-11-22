@@ -55,6 +55,7 @@
 
     <nav class="side-nav">
       <div class="nav-title">Werkstatt</div>
+      <div class="nav-item" id="nav-orders" data-view="orders">Aufträge <span class="count" id="orders-count">0</span></div>
       <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
     </nav>
 
@@ -87,7 +88,8 @@
           <button class="btn-outline" data-act="edit-template" data-show="list admin">Vorlage bearbeiten</button>
           <button class="btn-outline" data-act="new-protocol" data-show="list">Neu beginnen</button>
           <button class="btn-primary" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
-          <button class="btn-w" data-act="print" data-show="list protocol fleet">Drucken / PDF</button>
+          <button class="btn-primary" data-act="new-order" data-show="orders">+ Neuer Auftrag</button>
+          <button class="btn-w" data-act="print" data-show="list protocol fleet order orders">Drucken / PDF</button>
           <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
         </div>
       </div>
@@ -160,6 +162,24 @@
         <div class="arch-list" id="arch-list"></div>
       </div>
 
+      <!-- ── Ansicht: Werkstattaufträge (Liste) ── -->
+      <div id="view-orders" class="hidden">
+        <div class="arch-tools no-print">
+          <input id="orders-search" type="search" placeholder="Suchen: Auftrags-Nr., Fahrzeug, Kennzeichen, Arbeit …" autocomplete="off">
+          <select id="orders-status">
+            <option value="open">Nicht abgeschlossen</option>
+            <option value="">Alle</option>
+            <option value="offen">Offen</option>
+            <option value="arbeit">In Arbeit</option>
+            <option value="fertig">Abgeschlossen</option>
+          </select>
+        </div>
+        <div class="arch-list" id="orders-list"></div>
+      </div>
+
+      <!-- ── Ansicht: ein Werkstattauftrag ── -->
+      <div id="view-order" class="hidden"></div>
+
       <!-- ── Ansicht: Fuhrpark ── -->
       <div id="view-fleet" class="hidden">
         <div class="arch-tools no-print">
@@ -175,6 +195,7 @@
           <div id="proto-info"></div>
           <div class="actions">
             <button class="btn-sec" data-act="back-archive" id="btn-back-proto">← Zurück zum Archiv</button>
+            <button class="btn-sec hidden" data-act="order-from-protocol" id="btn-proto-order">🔧 Auftrag aus offenen Mängeln</button>
             <button class="btn-sec hidden" data-act="edit-protocol" id="btn-edit-proto">✏️ Bearbeiten</button>
             <button class="btn-sec btn-danger hidden" data-act="delete-protocol" id="btn-del-proto">🗑️ Löschen</button>
             <button class="btn-sec hidden" data-act="cancel-protocol-edit" id="btn-cancel-proto">Abbrechen</button>

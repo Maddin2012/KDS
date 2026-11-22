@@ -144,6 +144,24 @@ service cloud.firestore {
         allow write: if isAdmin(wid);
       }
 
+      // Werkstattaufträge: anlegen, lesen und bearbeiten alle Mitglieder, löschen nur Admins.
+      // Die Auftragsnummer bleibt nach dem Anlegen unverändert.
+      match /auftraege/{oid} {
+        allow read: if isMember(wid);
+        allow create: if isMember(wid)
+          && request.resource.data.nr is string && request.resource.data.nr.size() > 0 && request.resource.data.nr.size() < 80;
+        allow update: if isMember(wid) && request.resource.data.nr == resource.data.nr;
+        allow delete: if isAdmin(wid);
+      }
+
+      // Zähler für fortlaufende Auftragsnummern: nur um genau 1 hochzählen.
+      match /zaehler/{key} {
+        allow read: if isMember(wid);
+        allow create: if isMember(wid) && request.resource.data.keys().hasOnly(['n']) && request.resource.data.n == 1;
+        allow update: if isMember(wid) && request.resource.data.keys().hasOnly(['n']) && request.resource.data.n == resource.data.n + 1;
+        allow delete: if false;
+      }
+
       // Fuhrpark: lesen alle Mitglieder, anlegen/ändern/löschen nur Admins.
       // „Letzter Service“ darf jedes Mitglied setzen (beim Abschluss einer Serviceliste).
       match /fahrzeuge/{vid} {

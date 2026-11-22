@@ -132,6 +132,21 @@ await t('… aber nicht zusammen mit anderen Feldern', assertFails(updateDoc(vRe
 await t('Mitarbeiter löscht KEIN Fahrzeug', assertFails(deleteDoc(vRef(peF, 'v1'))));
 await t('Admin löscht Fahrzeug', assertSucceeds(deleteDoc(vRef(seF, 'v2'))));
 
+// ---------- Werkstattaufträge ----------
+const oRef = (db, id) => doc(db, 'workshops', W4, 'auftraege', id);
+const zRef = (db, k) => doc(db, 'workshops', W4, 'zaehler', k);
+await t('Mitarbeiter legt Auftrag an', assertSucceeds(setDoc(oRef(peF, 'a1'), { nr: '088-20261122-001', status: 'offen', rows: [] })));
+await t('Auftrag ohne Nummer abgelehnt', assertFails(setDoc(oRef(peF, 'a2'), { status: 'offen' })));
+await t('Mitarbeiter bearbeitet Auftrag', assertSucceeds(updateDoc(oRef(peF, 'a1'), { status: 'arbeit', km: '120000' })));
+await t('Nummer nachträglich ändern abgelehnt', assertFails(updateDoc(oRef(peF, 'a1'), { nr: '999' })));
+await t('Fremder liest keine Aufträge', assertFails(getDocs(collection(frF, 'workshops', W4, 'auftraege'))));
+await t('Mitarbeiter löscht KEINEN Auftrag', assertFails(deleteDoc(oRef(peF, 'a1'))));
+await t('Admin löscht Auftrag', assertSucceeds(deleteDoc(oRef(seF, 'a1'))));
+await t('Zähler startet bei 1', assertSucceeds(setDoc(zRef(peF, '088-20261122'), { n: 1 })));
+await t('Zähler +1', assertSucceeds(setDoc(zRef(peF, '088-20261122'), { n: 2 })));
+await t('Zähler springen abgelehnt', assertFails(setDoc(zRef(peF, '088-20261122'), { n: 5 })));
+await t('Zähler zurücksetzen abgelehnt', assertFails(setDoc(zRef(peF, '088-20261122'), { n: 1 })));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

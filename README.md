@@ -74,6 +74,17 @@ Ein Gerät bleibt angemeldet, bis es ein anderes Kürzel wählt.
 > Kombinationen durchprobiert, schützt sie nicht vollständig – längere PINs
 > (bis 12 Ziffern) sind möglich.
 
+**Werkstattaufträge.** Seitenleiste → *Werkstatt* → **Aufträge**: „+ Neuer
+Auftrag“ → Fahrzeug aus dem Fuhrpark wählen (oder frei eintragen). Die Nummer wird
+fortlaufend vergeben (`<Fahrzeug-ID>-<JJJJMMTT>-<lfd. Nr.>`, braucht Internet).
+Im Auftrag: Status *Offen / In Arbeit / Abgeschlossen*, Km, Std. OW/UW, Datum,
+Positionen (Arbeit, Material/Teile, Std., erledigt – **Enter** legt die nächste
+Position an) mit Stundensumme, Bemerkungen, ausführende Mitarbeiter. Alles wird
+automatisch gespeichert und ist sofort auf allen Geräten sichtbar; Drucken/PDF
+über den Knopf oben. Anlegen und bearbeiten dürfen alle, **löschen nur Admins**.
+Im abgeschlossenen Serviceprotokoll legt **„🔧 Auftrag aus offenen Mängeln“** einen
+Auftrag mit allen n.i.O.-Punkten (nicht behoben) als Positionen an.
+
 **Fuhrpark.** Seitenleiste → *Werkstatt* → **Fuhrpark**: alle Fahrzeuge mit
 ID, Typ, Kennzeichen, Werk-Nr., Baujahr, FIN, **UVV/HU/SP fällig am** und
 **letzter Service**. Fälligkeiten sind markiert (rot = überfällig, gelb = innerhalb

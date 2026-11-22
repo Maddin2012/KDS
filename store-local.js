@@ -5,6 +5,8 @@ const K_TPL = 'kds_local_templates';
 const K_PROTO = 'kds_local_protocols';
 const K_PINS = 'kds_local_pins';
 const K_FLEET = 'kds_local_fleet';
+const K_ORDERS = 'kds_local_orders';
+const K_COUNT = 'kds_local_counters';
 const K_CLAIM = 'kds_local_claim';
 const K_REC = 'kds_local_recoveries';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -32,7 +34,8 @@ export function createLocalStore() {
   const tplSubs = new Set(), protoSubs = new Set();
   const emitTpl = () => tplSubs.forEach(cb => cb(read(K_TPL, {})));
   const emitProto = () => protoSubs.forEach(cb => cb(read(K_PROTO, [])));
-  const fleetSubs = new Set();
+  const fleetSubs = new Set(), orderSubs = new Set();
+  const emitOrders = () => orderSubs.forEach(cb => cb(read(K_ORDERS, []).slice().sort((a, b) => (b.created || 0) - (a.created || 0))));
   const emitFleet = () => fleetSubs.forEach(cb => cb(read(K_FLEET, [])));
 
   // Andere Tabs im selben Browser
@@ -40,6 +43,7 @@ export function createLocalStore() {
     if (e.key === K_TPL) emitTpl();
     if (e.key === K_PROTO) emitProto();
     if (e.key === K_FLEET) emitFleet();
+    if (e.key === K_ORDERS) emitOrders();
   });
 
   return {
@@ -95,6 +99,20 @@ export function createLocalStore() {
       if (!write(K_TPL, all)) throw new Error('Speicher voll');
       emitTpl();
     },
+
+    /* ---------- Werkstattaufträge ---------- */
+    onOrders(cb) { orderSubs.add(cb); emitOrders(); return () => orderSubs.delete(cb); },
+    async nextOrderNr(key) { const c = read(K_COUNT, {}); c[key] = (c[key] || 0) + 1; write(K_COUNT, c); return c[key]; },
+    newOrderId() { return 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
+    async saveOrder(id, data, by) {
+      const list = read(K_ORDERS, []);
+      const d = { ...data, id, updatedBy: by || '', updatedAt: Date.now() };
+      const i = list.findIndex(o => o.id === id);
+      if (i >= 0) list[i] = d; else list.push(d);
+      if (!write(K_ORDERS, list)) throw new Error('Speicher voll');
+      emitOrders();
+    },
+    async deleteOrder(id) { write(K_ORDERS, read(K_ORDERS, []).filter(o => o.id !== id)); emitOrders(); },
 
     /* ---------- Fuhrpark ---------- */
     onVehicles(cb) { fleetSubs.add(cb); cb(read(K_FLEET, [])); return () => fleetSubs.delete(cb); },
