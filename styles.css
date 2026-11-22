@@ -731,3 +731,25 @@
     .o-field input::-webkit-calendar-picker-indicator { display:none }
   }
   @media (max-width:640px) { .hero h2 { font-size:22px; word-break:break-word } }
+
+  /* =====================================================================
+     Seitenleiste: aufklappbare Hauptgruppen
+     ===================================================================== */
+  .side-groups { border-top:1px solid rgba(255,255,255,0.08); margin-top:8px; padding:8px 12px; overflow-y:auto; flex:1; min-height:0 }
+  .nav-group { margin-bottom:6px }
+  .nav-group-h {
+    width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:transparent; border:0; color:#fff; padding:10px 8px; border-radius:6px;
+    font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.1em; font-weight:700; font-size:14px;
+  }
+  .nav-group-h:hover { background:rgba(255,255,255,0.06) }
+  .nav-group.has-active > .nav-group-h { color:var(--orange) }
+  .nav-group-h .chev { transition:transform .2s; color:var(--steel-2); font-size:14px }
+  .nav-group.closed .nav-group-h .chev { transform:rotate(-90deg) }
+  .nav-group-b { display:flex; flex-direction:column; gap:3px; padding:2px 0 6px 10px; border-left:1px solid rgba(255,255,255,0.08); margin-left:10px }
+  .nav-group.closed .nav-group-b { display:none }
+  #nav-cats { display:flex; flex-direction:column; gap:3px }
+  .nav-group-b .nav-item { font-size:14px; padding:8px 12px }
+  .nav-item.nav-soon { color:var(--steel-2); cursor:default }
+  .nav-item.nav-soon:hover { background:transparent; color:var(--steel-2) }
+  .nav-item.nav-soon .count { font-family:'Barlow Condensed',sans-serif; letter-spacing:.06em; text-transform:uppercase; font-size:10px }

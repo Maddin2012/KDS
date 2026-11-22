@@ -43,21 +43,36 @@
       <span class="sub" id="sidebar-sub">Serviceliste Kran</span>
     </div>
 
-    <nav class="side-nav" id="nav-cats">
-      <div class="nav-title">Serviceliste</div>
-      <!-- per Script -->
-    </nav>
+    <div class="side-groups">
+      <nav class="nav-group" data-group="service">
+        <button class="nav-group-h" type="button" data-group-toggle="service" aria-expanded="true">
+          <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-group-b">
+          <div id="nav-cats"><!-- Kategorien per Script --></div>
+          <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
+        </div>
+      </nav>
 
-    <nav class="side-nav">
-      <div class="nav-title">Ablage</div>
-      <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
-    </nav>
+      <nav class="nav-group" data-group="werkstatt">
+        <button class="nav-group-h" type="button" data-group-toggle="werkstatt" aria-expanded="true">
+          <span>Werkstatt</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-group-b">
+          <div class="nav-item" id="nav-orders" data-view="orders">Werkstattaufträge <span class="count" id="orders-count">0</span></div>
+          <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
+        </div>
+      </nav>
 
-    <nav class="side-nav">
-      <div class="nav-title">Werkstatt</div>
-      <div class="nav-item" id="nav-orders" data-view="orders">Aufträge <span class="count" id="orders-count">0</span></div>
-      <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
-    </nav>
+      <nav class="nav-group" data-group="lager">
+        <button class="nav-group-h" type="button" data-group-toggle="lager" aria-expanded="true">
+          <span>Lager</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-group-b">
+          <div class="nav-item nav-soon" aria-disabled="true">Lager &amp; Bestellungen <span class="count">folgt</span></div>
+        </div>
+      </nav>
+    </div>
 
     <div class="side-foot">
       <div>

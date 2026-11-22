@@ -98,7 +98,23 @@ function confirmModal(message, confirmLabel, danger = true) {
 /* =====================================================================
    Darstellung
    ===================================================================== */
+/* Hauptgruppen der Seitenleiste: auf-/zuklappbar, Zustand je Gerät gemerkt.
+   Die Gruppe der gerade geöffneten Seite ist immer aufgeklappt. */
+const viewGroup = () => (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? 'service'
+  : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? 'werkstatt' : '';
+function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
+function renderNavGroups() {
+  const closed = navClosed(), active = viewGroup();
+  document.querySelectorAll('.nav-group').forEach(g => {
+    const k = g.dataset.group, isClosed = !!closed[k] && k !== active;
+    g.classList.toggle('closed', isClosed);
+    g.classList.toggle('has-active', k === active);
+    g.querySelector('.nav-group-h').setAttribute('aria-expanded', String(!isClosed));
+  });
+}
+
 function renderNav() {
+  renderNavGroups();
   const nav = $('nav-cats');
   nav.querySelectorAll('.nav-item').forEach(n => n.remove());
   CATEGORIES.forEach(cat => {
@@ -1750,7 +1766,16 @@ document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-act]');
   if (a && actions[a.dataset.act]) { actions[a.dataset.act](a); return; }
 
+  const gt = e.target.closest('[data-group-toggle]');
+  if (gt) {
+    const k = gt.dataset.groupToggle, closed = navClosed();
+    const nowClosed = !gt.closest('.nav-group').classList.contains('closed');
+    if (nowClosed && k === viewGroup()) return;     // die Gruppe der offenen Seite bleibt offen
+    closed[k] = nowClosed; lsSet('kds_nav_closed', JSON.stringify(closed)); renderNavGroups();
+    return;
+  }
   const nav = e.target.closest('.nav-item');
+  if (nav && nav.classList.contains('nav-soon')) { showToast('Das Lager kommt mit dem nächsten Ausbauschritt'); return; }
   if (nav) {
     if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
