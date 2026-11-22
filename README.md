@@ -35,7 +35,7 @@ Abschlusszeitpunkt bleiben unverändert. Jede Bearbeitung wird vermerkt
 („zuletzt bearbeitet von … am …“, im Archiv „✎ bearbeitet“). Alle anderen
 können abgeschlossene Protokolle nur ansehen und drucken.
 
-**„Ich bin“.** Jedes Gerät wählt einmal, wer es benutzt (unten in der
+**„Nutzer“.** Jedes Gerät wählt einmal, wer es benutzt (unten in der
 Seitenleiste, jederzeit änderbar). Im Archiv steht dann, wer ein Protokoll
 abgeschlossen hat.
 
@@ -45,7 +45,7 @@ verschieben (Griff ⠿, auch per Finger), löschen, Gruppen in andere Kategorien
 kopieren. Änderungen gelten sofort auf allen Geräten. Nur Admins können
 Protokolle aus dem Archiv löschen.
 
-Wer bei „Ich bin“ **SE** oder **KÖ** (🔒) antippt, muss die PIN eingeben.
+Wer bei „Nutzer“ **SE** oder **KÖ** (🔒) antippt, muss die PIN eingeben.
 Die PIN steht nirgends im Code: In Firebase liegt nur ein Prüfwert, den kein
 Gerät lesen kann, und die **Firebase-Regeln** prüfen bei jedem Admin-Vorgang,
 ob das Gerät mit der richtigen PIN angemeldet ist – auch an der App vorbei.
@@ -217,7 +217,7 @@ Jeder Push auf `main` veröffentlicht automatisch neu.
 1. **Erstes Gerät, als Admin (SE oder KÖ):** App öffnen → bei „Wer bist du?“
    das eigene Kürzel wählen → PIN zweimal eingeben → **Neue Werkstatt anlegen**. Die Standardvorlagen
    werden dabei übernommen.
-2. Unten in der Seitenleiste auf das eigene Kürzel („Ich bin“) tippen. Im Fenster
+2. Unten in der Seitenleiste auf das eigene Kürzel („Nutzer“) tippen. Im Fenster
    steht unter **Kollegen einladen** der **Werkstatt-Code**; über **Einladen**
    wird ein Link geteilt (WhatsApp, Mail …).
 3. **Weitere Geräte:** Link öffnen → erst das eigene **Kürzel antippen** →
@@ -227,7 +227,7 @@ Jeder Push auf `main` veröffentlicht automatisch neu.
 **Wichtig:** „Neue Werkstatt anlegen“ nur ein einziges Mal. Jede weitere
 Werkstatt wäre ein getrennter Bereich mit eigenem Archiv.
 
-**Gerät in der falschen Werkstatt?** (Werkstatt-Code unter „Ich bin“ ist ein
+**Gerät in der falschen Werkstatt?** (Werkstatt-Code unter „Nutzer“ ist ein
 anderer als auf den übrigen Geräten) → **⚙ Einstellungen → „Andere Werkstatt
 beitreten“** → richtigen Code eingeben → Kürzel wählen (Admins mit der PIN dieser
 Werkstatt) → **Beitreten**. Die bisherige Werkstatt wird auf dem Gerät verlassen,
@@ -251,10 +251,11 @@ Unten in der Seitenleiste:
 
 | Anzeige | heißt |
 |---|---|
-| ● Abgeglichen (grün) | verbunden, alles übertragen |
-| ● Wird übertragen … (orange) | Änderungen sind unterwegs |
-| ● Offline – wird später übertragen (rot) | kein Netz; alles bleibt auf dem Gerät, bis wieder Verbindung besteht |
-| ● Probemodus – nur dieses Gerät (grau) | keine Firebase-Werte in dieser Version → Schritt 6 und 7 prüfen |
+| 🟢 **OK** | verbunden, alles übertragen |
+| 🟠 **Warnung** · offline – wird später übertragen | kein Netz; alles bleibt auf dem Gerät, bis wieder Verbindung besteht |
+| 🟠 **Warnung** · wird übertragen … | Änderungen sind unterwegs |
+| 🟠 **Warnung** · Probemodus – nur dieses Gerät | keine Firebase-Werte in dieser Version → Schritt 6 und 7 prüfen |
+| 🔴 **Fehler** · … | Speichern fehlgeschlagen/abgelehnt oder Verbindung zur Datenbank gestört |
 
 ---
 
@@ -282,7 +283,7 @@ tests/              Regeltests gegen den Firebase-Emulator
 | Pfad | Inhalt | Rechte |
 |---|---|---|
 | `workshops/{code}` | Name, Mitglieder (Geräte-Kennungen) | lesen per Code, beitreten nur sich selbst |
-| `…/members/{uid}` | „Ich bin“-Kürzel des Geräts | nur eigenes Gerät schreibt |
+| `…/members/{uid}` | „Nutzer“-Kürzel des Geräts | nur eigenes Gerät schreibt |
 | `…/templates/{Kategorie}` | Hauptgruppen und Prüfpunkte | lesen alle, schreiben nur Admins |
 | `…/protocols/{id}` | abgeschlossenes Protokoll | anlegen/lesen alle, ändern niemand, löschen nur Admins |
 

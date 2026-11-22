@@ -50,7 +50,7 @@ function adminRejected() {
   if (S.edit) { S.edit = false; S.editTpl = null; }
   S.protoEdit = false;
   render();
-  showToast(`PIN wurde geändert – bitte als ${S.me} neu anmelden (Ich bin → ${S.me})`);
+  showToast(`PIN wurde geändert – bitte als ${S.me} neu anmelden (Nutzer → ${S.me})`);
 }
 
 const tplFor = (cat) => (S.templates[cat] && Array.isArray(S.templates[cat].groups)) ? S.templates[cat] : defaultTemplate(cat);
@@ -1155,7 +1155,7 @@ function openSettings() {
       const ws = S.store.workshop;
       return `<h3>Andere Werkstatt beitreten</h3>
         <p>Dieses Gerät ist gerade in der Werkstatt <b class="ws-inline">${esc(ws ? fmtCode(ws.id) : '–')}</b>.
-        Den Code der richtigen Werkstatt findet ein Kollege dort unter „Ich bin“ → „Kollegen einladen“.</p>
+        Den Code der richtigen Werkstatt findet ein Kollege dort unter „Nutzer“ → „Kollegen einladen“.</p>
         <form id="set-form" novalidate>
           <div class="field"><label for="sw-code">Werkstatt-Code</label>
             <input id="sw-code" class="code" maxlength="24" autocomplete="off" placeholder="XXXX XXXX XXXX XXXX"></div>
@@ -1957,9 +1957,11 @@ async function start() {
     S.store.seedTemplatesIfEmpty(lsJson('kds_migrated_templates', null));
   }
 
-  S.store.onSync((state, text) => {
+  S.store.onSync((state, detail) => {
+    const label = { ok: 'OK', warn: 'Warnung', err: 'Fehler' }[state] || state;
     $('sync').className = 'sync ' + state;
-    $('sync-text').textContent = text;
+    $('sync-text').innerHTML = `<b>${esc(label)}</b>${detail ? `<small>${esc(detail)}</small>` : ''}`;
+    $('sync').title = label + (detail ? ' – ' + detail : '');
   });
   S.store.onLost(() => {
     S.store.leave();

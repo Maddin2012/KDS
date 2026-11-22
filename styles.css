@@ -762,3 +762,13 @@
   /* Auftrags-Textfelder nie niedriger als eine Zeile */
   .o-ta { min-height:2.2em }
   .o-notes { min-height:70px }
+
+  /* Status unten in der Seitenleiste: OK / Warnung / Fehler */
+  .sync { align-items:flex-start }
+  .sync .dot { margin-top:5px }
+  .sync.warn .dot { background:var(--orange) }
+  .sync.err .dot { background:#e5534b }
+  .sync #sync-text b { font-weight:700; color:#fff }
+  .sync.warn #sync-text b { color:var(--orange) }
+  .sync.err #sync-text b { color:#ff8a80 }
+  .sync #sync-text small { display:block; color:var(--steel-2); font-size:12px; line-height:1.3 }

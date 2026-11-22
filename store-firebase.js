@@ -61,15 +61,19 @@ export function createCloudStore(cfg) {
   let wid = localStorage.getItem(K_WS) || null;
   const syncSubs = new Set(), lostSubs = new Set();
   let pending = 0;
-  let syncState = ['wait', 'Verbinde …'];
+  let syncState = ['warn', 'Verbinde …'];
+  let errorMsg = '';          // letzter echter Fehler (bis zum nächsten erfolgreichen Übertragen)
 
+  /* Status: ok (grün) · warn (orange: offline / wird übertragen) · err (rot: echter Fehler) */
   function emitSync() {
-    if (!navigator.onLine) syncState = ['off', 'Offline – wird später übertragen'];
-    else if (pending > 0) syncState = ['wait', 'Wird übertragen …'];
-    else syncState = ['ok', 'Abgeglichen'];
+    if (!navigator.onLine) syncState = ['warn', 'offline – wird später übertragen'];
+    else if (errorMsg) syncState = ['err', errorMsg];
+    else if (pending > 0) syncState = ['warn', 'wird übertragen …'];
+    else syncState = ['ok', ''];
     syncSubs.forEach(cb => cb(...syncState));
   }
-  window.addEventListener('online', emitSync);
+  function setError(msg) { errorMsg = msg; emitSync(); }
+  window.addEventListener('online', () => { errorMsg = ''; emitSync(); });
   window.addEventListener('offline', emitSync);
 
   // Schreibvorgang verfolgen: Firestore speichert sofort lokal und überträgt,
@@ -78,7 +82,12 @@ export function createCloudStore(cfg) {
     pending++; emitSync();
     waitForPendingWrites(db).then(() => { pending = 0; emitSync(); }).catch(() => {});
     // Abgelehnte Schreibvorgänge (z. B. fehlende Admin-Rechte) sind KEIN Zugriffsverlust
-    return promise.catch(err => { pending = Math.max(0, pending - 1); emitSync(); console.error(err); throw err; });
+    return promise.then((r) => { if (errorMsg) { errorMsg = ''; emitSync(); } return r; }, (err) => {
+      pending = Math.max(0, pending - 1);
+      console.error(err);
+      setError(err && err.code === 'permission-denied' ? 'Speichern abgelehnt (keine Berechtigung)' : 'Speichern fehlgeschlagen');
+      throw err;
+    });
   }
 
   /* Nur für die Hauptlisten (Vorlagen, Archiv): Werden die abgelehnt, ist das Gerät
@@ -86,6 +95,7 @@ export function createCloudStore(cfg) {
   function handleErr(err) {
     console.error(err);
     if (err && err.code === 'permission-denied') lostSubs.forEach(cb => cb(err));
+    else setError('Verbindung zur Datenbank gestört');
   }
 
   const wsRef = () => doc(db, 'workshops', wid);
@@ -301,7 +311,7 @@ export function createCloudStore(cfg) {
         const list = [];
         qs.forEach(d => list.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites }));
         cb(list);
-      }, (err) => { console.error(err); if (onErr) onErr(err); });
+      }, (err) => { console.error(err); if (err && err.code !== 'permission-denied') setError('Verbindung zur Datenbank gestört'); if (onErr) onErr(err); });
     },
     /* Fortlaufende Nummer je Schlüssel (Fahrzeug + Tag) – Transaktion, keine Doppelvergabe */
     async nextOrderNr(key) {
@@ -326,7 +336,7 @@ export function createCloudStore(cfg) {
         const list = [];
         qs.forEach(d => list.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites }));
         cb(list);
-      }, (err) => { console.error(err); if (onErr) onErr(err); });   // z. B. alte Firebase-Regeln: kein Zugriffsverlust
+      }, (err) => { console.error(err); if (err && err.code !== 'permission-denied') setError('Verbindung zur Datenbank gestört'); if (onErr) onErr(err); });   // z. B. alte Firebase-Regeln: kein Zugriffsverlust
     },
     saveVehicle(id, data, by) {
       const ref = id ? doc(db, 'workshops', wid, 'fahrzeuge', id) : doc(sub('fahrzeuge'));

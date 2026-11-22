@@ -151,7 +151,7 @@ export function createLocalStore() {
       emitProto();
     },
 
-    onSync(cb) { cb('local', 'Probemodus – nur dieses Gerät'); return () => {}; },
+    onSync(cb) { cb('warn', 'Probemodus – nur dieses Gerät'); return () => {}; },
     onLost() { return () => {}; }
   };
 }
