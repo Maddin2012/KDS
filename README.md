@@ -111,6 +111,13 @@ darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
   (gezählten Bestand festlegen) und Löschen: nur Admins. Neue Kategorien und
   Lagerorte legen Admins direkt in der Auswahl an („+ Neue …“).
 
+**Material aus dem Werkstattauftrag abbuchen.** Im Auftrag unter *Material aus dem
+Lager* → **„+ Aus Lager entnehmen“** → Artikel suchen und antippen → Menge →
+**Entnehmen**. Das wird als Entnahme mit der Auftragsnummer gebucht (steht so in der
+Lager-Historie) und im Auftrag mit Menge, Datum und Kürzel aufgelistet – auch im
+Ausdruck. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
+Aufträgen geht das nur noch für SE und KÖ.
+
 **Bestellvorschläge.** *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
 dem Mindestbestand mit empfohlener Menge (auffüllen auf das Doppelte des
 Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.

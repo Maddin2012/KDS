@@ -904,3 +904,23 @@
     .qd-h { grid-template-columns:auto auto 1fr; } .qd-h span:last-child { display:none }
     .qd-admin .btn-sec { width:100% }
   }
+  /* Auftrag: Material aus dem Lager */
+  .osp-list { max-height:300px; overflow:auto; display:flex; flex-direction:column; gap:6px; margin:4px 0 12px }
+  .osp-item { display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:left; width:100%;
+    border:1px solid var(--line); border-radius:6px; padding:9px 12px; background:var(--surface); color:var(--text) }
+  .osp-item small { display:block; color:var(--steel); font-size:12px }
+  .osp-item .mono { font-family:'IBM Plex Mono',monospace; white-space:nowrap }
+  .osp-item:hover:not(:disabled) { border-color:var(--orange) }
+  .osp-item.on { border-color:var(--orange); background:var(--orange-lt) }
+  .osp-item:disabled { opacity:.45; cursor:not-allowed }
+  .osp-sel { margin-bottom:8px; font-size:14px }
+  .ol-table th { text-align:left }
+  @media (max-width:760px) {
+    .ol-table, .ol-table tbody, .ol-table tr, .ol-table td { display:block; width:100% }
+    .ol-table thead { display:none }
+    .ol-table tr { border:1px solid var(--line); border-radius:8px; margin-bottom:8px; padding:6px 0; position:relative }
+    .ol-table td { border:0 !important; padding:3px 10px; display:flex; gap:10px }
+    .ol-table td::before { content:attr(data-l); min-width:90px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;
+      letter-spacing:.08em; font-size:11px; color:var(--steel); font-weight:700 }
+    .ol-table td.col-act { position:absolute; top:4px; right:0; width:auto } .ol-table td.col-act::before { content:none }
+  }

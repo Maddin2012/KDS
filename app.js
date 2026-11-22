@@ -656,7 +656,7 @@ function renderReorder() {
    Werkstattaufträge
    ===================================================================== */
 const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
-  'rows', 'notes', 'crew', 'erstelltVon', 'source'];
+  'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager'];
 const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', fertig: 'Abgeschlossen' };
 const emptyOrderRow = () => ({ id: newId(), text: '', mat: '', h: '', done: false });
 const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -669,6 +669,7 @@ function normalizeOrder(o) {
   d.status = ORDER_STATUS[d.status] ? d.status : 'offen';
   d.rows = Array.isArray(d.rows) && d.rows.length ? d.rows.map(r => ({ ...emptyOrderRow(), ...r })) : [emptyOrderRow()];
   d.crew = Array.isArray(d.crew) ? d.crew : [];
+  d.lager = Array.isArray(d.lager) ? d.lager : [];
   ['fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum', 'notes'].forEach(f => { d[f] = d[f] || ''; });
   return d;
 }
@@ -785,6 +786,12 @@ function renderOrder() {
     </div>
 
     <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Material aus dem Lager</span></div>
+        <button class="btn-sec no-print" data-act="order-stock-add" type="button">+ Aus Lager entnehmen</button></div>
+      <div id="o-lager"></div>
+    </div>
+
+    <div class="box">
       <div class="sec-title"><div class="title-left"><span>Bemerkungen / Mängel</span></div></div>
       <textarea class="o-ta o-notes" data-f="notes" rows="3" placeholder="Auffälligkeiten, offene Punkte, Folgeauftrag …">${esc(o.notes)}</textarea>
     </div>
@@ -797,6 +804,7 @@ function renderOrder() {
     <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
       src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>`;
   renderOrderCrew();
+  renderOrderStock();
   if (locked) lockOrderView();
   renderChrome();                       // erst sichtbar machen, dann Höhen berechnen
   sizeOrderTextareas();
@@ -805,7 +813,7 @@ function renderOrder() {
 function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
-  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
 /* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
@@ -832,6 +840,108 @@ function renderOrderCrew() {
     <code>${esc(m.code)}</code>${esc(m.name)}</button>`).join('');
   $('o-crew-print').textContent = o.crew.map(monteurLabel).join(', ') || '—';
 }
+/* ---------- Material aus dem Lager im Auftrag ---------- */
+function renderOrderStock() {
+  const o = S.orderEdit, box = $('o-lager'); if (!box) return;
+  if (!o.lager.length) { box.innerHTML = '<p class="proto-meta">Noch kein Material aus dem Lager entnommen.</p>'; return; }
+  const locked = orderLocked(o);
+  box.innerHTML = `<table class="service-table ol-table">
+    <thead><tr><th>Art.-Nr.</th><th>Artikel</th><th>Menge</th><th>Entnommen</th><th class="col-act no-print"></th></tr></thead>
+    <tbody>${o.lager.map(m => `<tr>
+      <td data-l="Art.-Nr." class="mono">${esc(m.sku || '—')}</td>
+      <td data-l="Artikel"><b>${esc(m.name)}</b></td>
+      <td data-l="Menge" class="mono">${esc(fmtNum(m.menge))} ${esc(m.einheit || '')}</td>
+      <td data-l="Entnommen">${esc(new Date(m.ts || 0).toLocaleDateString('de-DE'))} · ${esc(m.von || '')}</td>
+      <td class="col-act no-print">${locked ? '' : `<button class="btn-del-row" data-act="order-stock-del" data-mid="${esc(m.id)}" title="Zurück ins Lager buchen">✕</button>`}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+const orderBookingText = (o) => 'Auftrag ' + o.nr + ([o.code, o.fahrzeug].filter(Boolean).length ? ' · ' + [o.code, o.fahrzeug].filter(Boolean).join(' ') : '');
+function saveOrderImmediately() { S.orderDirty = true; saveOrderNow(); }
+
+/* Auswahl: Artikel suchen → Menge → als Entnahme buchen und im Auftrag festhalten */
+function openOrderStockPicker() {
+  const o = S.orderEdit; if (!o || orderLocked(o)) return;
+  if (S.lagerError) { showToast('Das Lager ist noch nicht verfügbar'); return; }
+  const ov = $('setup');
+  let sel = null;
+  ov.innerHTML = `<div class="setup-card osp-card">${cardHead}
+    <h3>Material aus dem Lager</h3>
+    <p>Wird als Entnahme mit <b>Auftrag ${esc(o.nr)}</b> gebucht.</p>
+    <div class="field"><input id="osp-q" placeholder="Artikel suchen: Name, Art.-Nr. …" autocomplete="off"></div>
+    <div id="osp-list" class="osp-list"></div>
+    <form id="osp-form" class="osp-form hidden" novalidate>
+      <div class="osp-sel" id="osp-sel"></div>
+      <div class="field"><label for="osp-qty" id="osp-qty-l">Menge</label><input id="osp-qty" inputmode="decimal" autocomplete="off"></div>
+      <button class="btn-big" type="submit">Entnehmen</button>
+    </form>
+    <div class="setup-err" id="osp-err"></div>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div>
+  </div>`;
+  ov.classList.remove('hidden');
+  const list = () => {
+    const q = $('osp-q').value.trim().toLowerCase();
+    const arts = S.articles.filter(x => !q || [x.sku, x.name, x.kat, x.lagerort].join(' ').toLowerCase().includes(q))
+      .sort((x, y) => deSort(x.name || '', y.name || ''));
+    $('osp-list').innerHTML = arts.length ? arts.map(x => `<button type="button" class="osp-item${sel && sel.id === x.id ? ' on' : ''}" data-aid="${esc(x.id)}" ${num(x.bestand) <= 0 ? 'disabled' : ''}>
+        <span><b>${esc(x.name)}</b><small>${esc([x.sku, x.lagerort].filter(Boolean).join(' · '))}</small></span>
+        <span class="mono">${esc(fmtNum(x.bestand))} ${esc(x.einheit || '')}</span></button>`).join('')
+      : `<p class="proto-meta">${S.articles.length ? 'Kein Artikel gefunden.' : 'Noch keine Artikel im Lager.'}</p>`;
+  };
+  list();
+  setTimeout(() => $('osp-q') && $('osp-q').focus(), 30);
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.oninput = null; };
+  ov.oninput = (e) => { if (e.target.id === 'osp-q') list(); };
+  ov.onclick = (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    const it = e.target.closest('.osp-item');
+    if (it && !it.disabled) {
+      sel = S.articles.find(x => x.id === it.dataset.aid); if (!sel) return;
+      list();
+      $('osp-form').classList.remove('hidden');
+      $('osp-sel').innerHTML = `<b>${esc(sel.name)}</b> · am Lager ${esc(fmtNum(sel.bestand))} ${esc(sel.einheit || '')}`;
+      $('osp-qty-l').textContent = `Menge (${sel.einheit || 'Stk.'})`;
+      $('osp-err').textContent = '';
+      $('osp-qty').focus();
+    }
+  };
+  ov.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!sel) return;
+    const qty = num($('osp-qty').value);
+    if (!(qty > 0)) { $('osp-err').textContent = 'Bitte eine Menge größer 0 eingeben.'; return; }
+    const btn = ov.querySelector('#osp-form button[type="submit"]');
+    btn.disabled = true; $('osp-err').textContent = 'wird gebucht …';
+    try {
+      const neu = await S.store.book(sel.id, { typ: 'Entnahme', menge: qty, grund: orderBookingText(o) }, S.me);
+      if (S.orderEdit && S.orderEdit.id === o.id) {
+        S.orderEdit.lager.push({ id: newId(), aid: sel.id, name: sel.name || '', sku: sel.sku || '', einheit: sel.einheit || '', menge: qty, ts: Date.now(), von: S.me || '' });
+        saveOrderImmediately(); renderOrderStock();
+      }
+      close();
+      showToast(`${fmtNum(qty)} ${sel.einheit || ''} ${sel.name} entnommen – Restbestand ${fmtNum(neu)}`);
+    } catch (err) {
+      btn.disabled = false;
+      $('osp-err').textContent = err && err.code === 'zu-wenig' ? `Nur ${fmtNum(err.bestand)} ${sel.einheit || ''} am Lager.`
+        : (err && err.message) || 'Buchen fehlgeschlagen.';
+    }
+  };
+}
+async function removeOrderStock(mid) {
+  const o = S.orderEdit; if (!o || orderLocked(o)) return;
+  const m = o.lager.find(x => x.id === mid); if (!m) return;
+  const art = S.articles.find(x => x.id === m.aid);
+  if (!art) {
+    if (!(await confirmModal(`„${m.name}“ gibt es im Lager nicht mehr. Nur aus dem Auftrag entfernen?`, 'Entfernen'))) return;
+  } else if (!(await confirmModal(`${fmtNum(m.menge)} ${m.einheit} „${m.name}“ wieder ins Lager zurückbuchen und aus dem Auftrag entfernen?`, 'Zurückbuchen'))) return;
+  try {
+    if (art) await S.store.book(m.aid, { typ: 'Zulauf', menge: num(m.menge), grund: 'Rückgabe aus ' + orderBookingText(o) }, S.me);
+    const cur = S.orderEdit && S.orderEdit.id === o.id ? S.orderEdit : o;
+    cur.lager = cur.lager.filter(x => x.id !== mid);
+    saveOrderImmediately(); renderOrderStock();
+    showToast(art ? 'Zurück ins Lager gebucht' : 'Aus dem Auftrag entfernt');
+  } catch (err) { showToast((err && err.message) || 'Rückbuchung fehlgeschlagen'); }
+}
+
 function autoSize(ta) {
   if (!ta.offsetParent) return;          // unsichtbar: nicht messen
   ta.style.height = 'auto';
@@ -2180,6 +2290,8 @@ const actions = {
   'delete-article': () => deleteArticle(),
   'add-supplier': () => { if (!amAdmin()) return; S.artEdit.suppliers.push({ name: '', bestellNr: '', gebinde: '', preis: '' }); renderArticle(); queueArtSave(); },
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
+  'order-stock-add': () => openOrderStockPicker(),
+  'order-stock-del': (btn) => removeOrderStock(btn.dataset.mid),
   'back-orders': () => { flushOrderSave(); S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); },
   'order-add-row': () => addOrderRow(),
   'order-del-row': (btn) => {
