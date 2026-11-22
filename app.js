@@ -388,8 +388,15 @@ function renderOrder() {
     <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
       src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>`;
   renderOrderCrew();
-  $('view-order').querySelectorAll('.o-ta').forEach(autoSize);
-  renderChrome();
+  renderChrome();                       // erst sichtbar machen, dann Höhen berechnen
+  sizeOrderTextareas();
+}
+/* Textfelder an ihren Inhalt anpassen – nur wenn sichtbar (sonst ergibt die Messung 0) */
+function sizeOrderTextareas() {
+  const run = () => $('view-order').querySelectorAll('.o-ta').forEach(autoSize);
+  run();
+  requestAnimationFrame(run);                                   // nach dem Zeichnen nochmals
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(run);   // nach dem Laden der Schrift
 }
 function renderOrderCrew() {
   const o = S.orderEdit;
@@ -397,7 +404,12 @@ function renderOrderCrew() {
     <code>${esc(m.code)}</code>${esc(m.name)}</button>`).join('');
   $('o-crew-print').textContent = o.crew.map(monteurLabel).join(', ') || '—';
 }
-function autoSize(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+function autoSize(ta) {
+  if (!ta.offsetParent) return;          // unsichtbar: nicht messen
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 2) + 'px';
+}
+window.addEventListener('resize', () => { if (S.view === 'order') sizeOrderTextareas(); });
 
 function onOrderInput(t) {
   const o = S.orderEdit, f = t.dataset.f;

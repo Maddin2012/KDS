@@ -753,3 +753,12 @@
   .nav-item.nav-soon { color:var(--steel-2); cursor:default }
   .nav-item.nav-soon:hover { background:transparent; color:var(--steel-2) }
   .nav-item.nav-soon .count { font-family:'Barlow Condensed',sans-serif; letter-spacing:.06em; text-transform:uppercase; font-size:10px }
+
+  /* Seitenleiste scrollt als Ganzes; „Ich bin“ steht am Ende (unten) */
+  @media (min-width:941px) {
+    .side { overflow-y:auto; overscroll-behavior:contain }
+    .side-groups { flex:0 0 auto; overflow:visible; min-height:auto }
+  }
+  /* Auftrags-Textfelder nie niedriger als eine Zeile */
+  .o-ta { min-height:2.2em }
+  .o-notes { min-height:70px }
