@@ -924,3 +924,5 @@
       letter-spacing:.08em; font-size:11px; color:var(--steel); font-weight:700 }
     .ol-table td.col-act { position:absolute; top:4px; right:0; width:auto } .ol-table td.col-act::before { content:none }
   }
+  /* Sidebar ohne Anzahlen */
+  .nav-item .count { display:none !important }
