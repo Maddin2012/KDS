@@ -926,3 +926,8 @@
   }
   /* Sidebar ohne Anzahlen */
   .nav-item .count { display:none !important }
+  /* Nutzer sperren */
+  .pick.blocked { opacity:.45; cursor:not-allowed; text-decoration:line-through }
+  .set-btn.set-blocked small { color:#b42318; font-weight:600 }
+  .btn-big.btn-danger-big { background:#b42318; color:#fff }
+  .btn-big.btn-danger-big:hover { background:#8f1c13 }

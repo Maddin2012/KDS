@@ -132,6 +132,16 @@ leer, abgewählte Punkte erscheinen nicht.
 Fenster offen (Einstellungen, Nutzer, Fahrzeug, Rückfrage …) oder am Handy die
 Seitenleiste, wird zuerst dieses geschlossen.
 
+**Nutzer sperren (nur SE und KÖ).** ⚙ Einstellungen → *Nutzer sperren* → Kürzel
+antippen → **sperren**. Danach kann niemand dieses Kürzel mehr wählen, und alle Geräte,
+die gerade damit angemeldet sind, verlieren sofort den Zugriff und können auch mit dem
+Werkstatt-Code nicht erneut beitreten. Bisherige Protokolle, Aufträge und Buchungen
+bleiben erhalten. **Entsperren** hebt beides wieder auf. Admin-Kürzel lassen sich nicht
+sperren.
+> Grenze: Die Anmeldung läuft ohne Passwort. Wer die App-Daten auf seinem Gerät löscht
+> und den Werkstatt-Code kennt, könnte als „neues Gerät“ mit einem anderen, nicht
+> gesperrten Kürzel beitreten.
+
 **Dunkelmodus.** ⚙ Einstellungen → *Darstellung*: Hell, Dunkel oder Automatisch
 (folgt der Geräteeinstellung). Gilt je Gerät; gedruckt wird immer hell.
 

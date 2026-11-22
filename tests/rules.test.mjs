@@ -1,6 +1,6 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'fs';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, runTransaction, deleteField } from 'firebase/firestore';
 import { createHash } from 'crypto';
 
 // Gleiche Berechnung wie in der App: SHA-256 aus Werkstatt-Code, Kürzel und PIN
@@ -180,6 +180,32 @@ await t('Mitarbeiter liest Historie', assertSucceeds(getDocs(collection(peF, 'wo
 await t('Mitarbeiter ändert KEINE Lagerorte', assertFails(setDoc(doc(peF, 'workshops', W4, 'einstellungen', 'lager'), { lagerorte: ['X'] })));
 await t('Admin ändert Lagerorte', assertSucceeds(setDoc(doc(seF, 'workshops', W4, 'einstellungen', 'lager'), { lagerorte: ['Halle 2'] })));
 await t('Mitarbeiter löscht KEINEN Artikel', assertFails(deleteDoc(aRef(peF, 'oel'))));
+
+// ---------- Nutzer sperren ----------
+const W5 = 'SPERRWERKSTATT05';
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  await setDoc(doc(db, 'workshops', W5), { name: 'S', members: { se: true, pe: true, br: true } });
+  await setDoc(doc(db, 'workshops', W5, 'members', 'se'), { monteur: 'SE' });
+  await setDoc(doc(db, 'workshops', W5, 'members', 'pe'), { monteur: 'PE' });
+  await setDoc(doc(db, 'workshops', W5, 'members', 'br'), { monteur: 'BR' });
+  await setDoc(doc(db, 'workshops', W5, 'pins', 'SE'), { hash: pinHash(W5, 'SE', '1111') });
+  await setDoc(doc(db, 'workshops', W5, 'adminClaims', 'se'), { monteur: 'SE', hash: pinHash(W5, 'SE', '1111') });
+});
+const ws5 = (db) => doc(db, 'workshops', W5);
+const peS = env.authenticatedContext('pe').firestore(), brS = env.authenticatedContext('br').firestore(), seS = env.authenticatedContext('se').firestore();
+await t('Mitarbeiter sperrt KEINEN anderen', assertFails(updateDoc(ws5(brS), { gesperrt: ['PE'], 'members.pe': false })));
+await t('Mitarbeiter setzt KEINE Sperrliste', assertFails(updateDoc(ws5(brS), { gesperrt: ['PE'] })));
+await t('Admin kann KEIN Admin-Kürzel sperren', assertFails(updateDoc(ws5(seS), { gesperrt: ['KÖ'] })));
+await t('Admin sperrt PE (Kürzel + Gerät)', assertSucceeds(updateDoc(ws5(seS), { gesperrt: ['PE'], 'members.pe': false })));
+await t('Gesperrtes Gerät liest nichts mehr', assertFails(getDocs(collection(peS, 'workshops', W5, 'members'))));
+await t('Gesperrtes Gerät tritt NICHT erneut bei', assertFails(updateDoc(ws5(peS), { 'members.pe': true })));
+await t('Anderes Gerät wählt gesperrtes Kürzel NICHT', assertFails(setDoc(doc(brS, 'workshops', W5, 'members', 'br'), { monteur: 'PE' })));
+await t('Anderes Kürzel weiterhin wählbar', assertSucceeds(setDoc(doc(brS, 'workshops', W5, 'members', 'br'), { monteur: 'KE' })));
+await t('Mitarbeiter hebt Sperre NICHT auf', assertFails(updateDoc(ws5(brS), { gesperrt: [], 'members.pe': true })));
+await t('Neues Gerät tritt normal bei', assertSucceeds(updateDoc(ws5(env.authenticatedContext('neu').firestore()), { 'members.neu': true })));
+await t('Admin entsperrt PE', assertSucceeds(updateDoc(ws5(seS), { gesperrt: [], 'members.pe': deleteField() })));
+await t('Entsperrtes Gerät tritt wieder bei', assertSucceeds(updateDoc(ws5(peS), { 'members.pe': true })));
 
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();

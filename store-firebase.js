@@ -9,7 +9,8 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
-  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs, runTransaction
+  onSnapshot, query, orderBy, limit, serverTimestamp, waitForPendingWrites, writeBatch, getDocs, runTransaction,
+  arrayUnion, arrayRemove, deleteField
 } from './vendor/firebase/firebase-firestore.js';
 import { ADMINS, TEXT_FIX_VERSION } from './data.js';
 
@@ -149,6 +150,8 @@ export function createCloudStore(cfg) {
       try { snap = await getDoc(doc(db, 'workshops', code)); }
       catch (e) { throw new Error(navigator.onLine ? 'Werkstatt konnte nicht geprüft werden.' : 'Zum Beitreten wird Internet gebraucht.'); }
       if (!snap.exists()) throw new Error('Zu diesem Code gibt es keine Werkstatt.');
+      if ((snap.data().members || {})[uid] === false) throw new Error('Dieses Gerät wurde von einem Admin gesperrt. Bitte an SE oder KÖ wenden.');
+      if ((snap.data().gesperrt || []).includes(me)) throw new Error(`Der Nutzer ${me} ist gesperrt. Bitte an SE oder KÖ wenden.`);
       if (!(snap.data().members || {})[uid]) {
         await updateDoc(doc(db, 'workshops', code), { ['members.' + uid]: true });
       }
@@ -264,6 +267,43 @@ export function createCloudStore(cfg) {
     },
 
     leave() { localStorage.removeItem(K_WS); wid = null; },
+
+    /* ---------- Nutzer sperren (Admins) ---------- */
+    get uid() { return uid; },
+    onWorkshop(cb) {
+      return onSnapshot(wsRef(), (snap) => cb(snap.exists() ? snap.data() : {}), (err) => console.error(err));
+    },
+    onMembers(cb) {
+      return onSnapshot(sub('members'), (qs) => {
+        const list = []; qs.forEach(d => list.push({ uid: d.id, monteur: d.data().monteur || '' })); cb(list);
+      }, (err) => console.error(err));
+    },
+    /* Wurde dieses Gerät ausgesperrt? (Werkstatt-Dokument darf jeder Angemeldete lesen) */
+    async isBanned() {
+      if (!wid) return false;
+      const snap = await getDoc(wsRef());
+      return snap.exists() && (snap.data().members || {})[uid] === false;
+    },
+    /* Kürzel sperren: kann nicht mehr gewählt werden, alle Geräte mit diesem Kürzel verlieren
+       sofort den Zugriff und können nicht erneut beitreten. Entsperren hebt beides auf. */
+    async setBlocked(code, blocked) {
+      if (!navigator.onLine) throw new Error('Dafür wird Internet gebraucht.');
+      if (ADMINS.includes(code)) throw new Error('Admins können nicht gesperrt werden.');
+      const [ws, ms] = await Promise.all([getDoc(wsRef()), getDocs(sub('members'))]);
+      const members = (ws.data() || {}).members || {};
+      const patch = { gesperrt: blocked ? arrayUnion(code) : arrayRemove(code) };
+      ms.forEach(d => {
+        if (d.id === uid || (d.data().monteur || '') !== code) return;
+        if (blocked && members[d.id] === true) patch['members.' + d.id] = false;
+        if (!blocked && members[d.id] === false) patch['members.' + d.id] = deleteField();
+      });
+      try { await withTimeout(updateDoc(wsRef(), patch), 15000, 'Keine Verbindung zur Datenbank.'); }
+      catch (e) {
+        if (e && e.code === 'permission-denied') throw new Error('Keine Berechtigung. Sind die Firebase-Regeln aktuell?');
+        throw e;
+      }
+      return Object.keys(patch).length - 1;
+    },
 
     /* „Ich bin“ für Nicht-Admins; ein vorhandener Admin-Nachweis wird dabei entfernt */
     setMe(me) {

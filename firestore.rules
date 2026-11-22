@@ -80,7 +80,14 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
         && request.resource.data.members.diff(resource.data.members)
              .affectedKeys().hasOnly([request.auth.uid])
-        && request.resource.data.members[request.auth.uid] == true;
+        && request.resource.data.members[request.auth.uid] == true
+        // ausgesperrte Geräte (Eintrag false) dürfen nicht selbst wieder beitreten
+        && resource.data.members.get(request.auth.uid, null) == null;
+    }
+
+    // Gesperrte Kürzel (Feld `gesperrt` im Werkstatt-Dokument)
+    function blockedCodes(wid) {
+      return get(/databases/$(database)/documents/workshops/$(wid)).data.get('gesperrt', []);
     }
 
     match /workshops/{wid} {
@@ -92,7 +99,11 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.members[request.auth.uid] == true;
 
-      allow update: if isMember(wid) || isSelfJoin();
+      // Mitgliederliste und Sperren ändern nur Admins (bzw. der eigene Beitritt);
+      // Admin-Kürzel können nie gesperrt werden.
+      allow update: if !request.resource.data.get('gesperrt', []).hasAny(adminCodes())
+        && (isAdmin(wid) || isSelfJoin()
+            || (isMember(wid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'gesperrt'])));
       allow delete: if false;
 
       // „Ich bin“ je Gerät: lesen dürfen alle Mitglieder, schreiben nur den eigenen
@@ -101,6 +112,7 @@ service cloud.firestore {
         allow read: if isMember(wid);
         allow delete: if isMember(wid) && request.auth.uid == uid;
         allow create, update: if isMember(wid) && request.auth.uid == uid
+          && !(request.resource.data.monteur in blockedCodes(wid))
           && (!(request.resource.data.monteur in adminCodes())
               || (existsAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid))
                   && getAfter(/databases/$(database)/documents/workshops/$(wid)/adminClaims/$(uid)).data.monteur

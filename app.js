@@ -44,7 +44,9 @@ const S = {
   orderEdit: null,          // Arbeitskopie des geöffneten Auftrags
   orderDirty: false,
   claim: null,              // Admin-Nachweis dieses Geräts (nur mit richtiger PIN)
-  pinFlags: {}              // für welche Admin-Kürzel eine PIN festgelegt ist
+  pinFlags: {},             // für welche Admin-Kürzel eine PIN festgelegt ist
+  gesperrt: [],             // von Admins gesperrte Nutzer-Kürzel
+  memberList: []            // Geräte der Werkstatt mit ihrem Kürzel (für „Nutzer sperren“)
 };
 
 /* Admin-Rechte nur mit gültigem PIN-Nachweis – nicht schon durch das Kürzel */
@@ -1554,10 +1556,10 @@ async function leaveProtoEdit() {
    „Ich bin“ & Einrichtung
    ===================================================================== */
 function mePickerHtml(sel) {
-  return `<div class="pick-grid">${MONTEURE.map(m => `
-    <button type="button" class="pick ${m.code === sel ? 'sel' : ''}" data-code="${esc(m.code)}">
-      <code>${esc(m.code)}${isAdmin(m.code) ? ' <small title="mit PIN">🔒</small>' : ''}</code><span>${esc(m.name)}</span>
-    </button>`).join('')}</div>`;
+  return `<div class="pick-grid">${MONTEURE.map(m => { const blk = S.gesperrt.includes(m.code); return `
+    <button type="button" class="pick ${m.code === sel ? 'sel' : ''} ${blk ? 'blocked' : ''}" data-code="${esc(m.code)}" ${blk ? 'disabled title="gesperrt"' : ''}>
+      <code>${esc(m.code)}${isAdmin(m.code) ? ' <small title="mit PIN">🔒</small>' : ''}</code><span>${esc(m.name)}${blk ? ' · gesperrt' : ''}</span>
+    </button>`; }).join('')}</div>`;
 }
 
 /* „Ich bin“ für Nicht-Admins (Admins nur über PIN, siehe pickMe) */
@@ -1761,6 +1763,19 @@ function openSettings() {
           <div class="setup-err" id="set-err"></div>
         </form>${back}`;
     }
+    if (screen === 'block') {
+      const c = ctx.code, blk = S.gesperrt.includes(c);
+      const n = S.memberList.filter(m => m.monteur === c).length;
+      return `<h3>${esc(monteurLabel(c))} ${blk ? 'entsperren' : 'sperren'}</h3>
+        ${blk ? `<p><b>${esc(c)}</b> ist gesperrt. Beim Entsperren kann das Kürzel wieder gewählt werden, und gesperrte Geräte
+          können der Werkstatt mit dem Code oder Einladungslink wieder beitreten.</p>`
+        : `<p>Nach dem Sperren kann niemand mehr <b>${esc(c)}</b> als Nutzer wählen. ${n ? `<b>${n} ${n === 1 ? 'Gerät ist' : 'Geräte sind'}</b> gerade als ${esc(c)} angemeldet – ${n === 1 ? 'es verliert' : 'sie verlieren'} sofort den Zugriff und ${n === 1 ? 'kann' : 'können'} nicht erneut beitreten.` : 'Gerade ist kein Gerät als ' + esc(c) + ' angemeldet.'}</p>
+          <p style="font-size:13px">Bereits erfasste Protokolle, Aufträge und Buchungen von ${esc(c)} bleiben erhalten.</p>`}
+        <form id="set-form" novalidate>
+          <button class="btn-big ${blk ? '' : 'btn-danger-big'}" type="submit">${blk ? 'Entsperren' : esc(c) + ' sperren'}</button>
+          <div class="setup-err" id="set-err"></div>
+        </form>${back}`;
+    }
     if (screen === 'forgot') return `<h3>PIN vergessen?</h3>
       <p>Mit dem Wiederherstellungs-Code, der beim Festlegen der PIN angezeigt wurde, eine neue PIN setzen.
       Ohne Code: Der andere Admin kann die PIN unter ⚙ Einstellungen zurücksetzen.</p>
@@ -1802,6 +1817,15 @@ function openSettings() {
         <h4>Werkstatt</h4>
         <div class="set-list">
           <button class="set-btn" type="button" data-s="switch">Andere Werkstatt beitreten <small>jetzt: ${esc(fmtCode(S.store.workshop.id))}</small></button>
+        </div>
+      </div>` : ''}
+      ${admin && cloud ? `
+      <div class="set-section">
+        <h4>Nutzer sperren</h4>
+        <div class="set-list">
+          ${MONTEURE.filter(m => !isAdmin(m.code)).map(m => { const blk = S.gesperrt.includes(m.code), n = S.memberList.filter(x => x.monteur === m.code).length; return `
+          <button class="set-btn ${blk ? 'set-blocked' : ''}" type="button" data-s="block" data-code="${esc(m.code)}">${esc(m.code)} · ${esc(m.name)}
+            <small>${blk ? '⛔ gesperrt – antippen zum Entsperren' : (n ? n + (n === 1 ? ' Gerät' : ' Geräte') + ' · aktiv' : 'aktiv')}</small></button>`; }).join('')}
         </div>
       </div>` : ''}
       ${admin ? `
@@ -1898,6 +1922,19 @@ function openSettings() {
   ov.onsubmit = async (e) => {
     e.preventDefault();
     if (screen === 'import') { await doImport(); return; }
+    if (screen === 'block') {
+      const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
+      if (!amAdmin()) { err.textContent = 'Bitte zuerst als Admin anmelden.'; return; }
+      const c = ctx.code, blk = !S.gesperrt.includes(c);
+      btn.disabled = true; err.textContent = blk ? 'Wird gesperrt …' : 'Wird entsperrt …';
+      try {
+        const n = await S.store.setBlocked(c, blk);
+        S.gesperrt = blk ? [...new Set([...S.gesperrt, c])] : S.gesperrt.filter(x => x !== c);
+        showToast(blk ? `${c} gesperrt${n ? ' – ' + n + (n === 1 ? ' Gerät' : ' Geräte') + ' ausgesperrt' : ''}` : `${c} entsperrt`);
+        screen = 'main'; draw();
+      } catch (ex) { btn.disabled = false; err.textContent = ex.message || 'Das hat nicht geklappt'; }
+      return;
+    }
     if (screen === 'switch') {
       const err = $('set-err');
       const code = $('sw-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -2654,7 +2691,7 @@ async function start() {
       const { createCloudStore } = await import('./store-firebase.js');
       S.store = createCloudStore(cfg);
       const { ready } = await S.store.start();
-      if (!ready) await runSetup();
+      if (!ready) { const msg = lsGet('kds_blocked_msg'); if (msg) lsSet('kds_blocked_msg', ''); await runSetup(msg || undefined); }
     } catch (e) {
       console.error(e);
       document.body.insertAdjacentHTML('afterbegin', `<div style="background:#b42318;color:#fff;padding:10px 16px;font-size:14px">Verbindung zur Datenbank fehlgeschlagen: ${esc(e.message || e)} – Seite neu laden.</div>`);
@@ -2675,11 +2712,23 @@ async function start() {
     btn.dataset.status = label + (detail ? ' – ' + detail : '');
     btn.title = [btn.dataset.who, btn.dataset.status].filter(Boolean).join(' · ');
   });
-  S.store.onLost(() => {
+  let lostHandled = false;
+  const onLostAccess = async (known) => {
+    if (lostHandled) return; lostHandled = true;
+    let banned = !!known;
+    if (!banned) { try { banned = await S.store.isBanned(); } catch (e) { /* unbekannt */ } }
     S.store.leave();
-    showToast('Kein Zugriff mehr auf diese Werkstatt');
+    if (banned) lsSet('kds_blocked_msg', 'Dieses Gerät wurde von einem Admin gesperrt. Bitte an SE oder KÖ wenden.');
+    showToast(banned ? 'Dieses Gerät wurde gesperrt' : 'Kein Zugriff mehr auf diese Werkstatt');
     setTimeout(() => location.reload(), 1500);
+  };
+  S.store.onLost(() => onLostAccess(false));
+  // Offene Verbindungen merken eine Sperre nicht von selbst – daher das Werkstatt-Dokument beobachten
+  S.store.onWorkshop((d) => {
+    S.gesperrt = Array.isArray(d.gesperrt) ? d.gesperrt : [];
+    if (d.members && S.store.uid && d.members[S.store.uid] === false) onLostAccess(true);
   });
+  S.store.onMembers((list) => { S.memberList = list; });
 
   S.store.onTemplates((all) => {
     const prevCat = S.templates[S.cat];

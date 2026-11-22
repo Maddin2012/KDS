@@ -56,6 +56,19 @@ export function createLocalStore() {
 
     async start() { return { ready: true }; },
 
+    /* Nutzer sperren – im Probemodus nur die Kürzel-Liste auf diesem Gerät */
+    uid: 'local',
+    onWorkshop(cb) { cb({ gesperrt: JSON.parse(localStorage.getItem('kds_local_gesperrt') || '[]') }); this._wsCb = cb; return () => {}; },
+    onMembers(cb) { cb([]); return () => {}; },
+    async isBanned() { return false; },
+    async setBlocked(code, blocked) {
+      const cur = new Set(JSON.parse(localStorage.getItem('kds_local_gesperrt') || '[]'));
+      blocked ? cur.add(code) : cur.delete(code);
+      localStorage.setItem('kds_local_gesperrt', JSON.stringify([...cur]));
+      if (this._wsCb) this._wsCb({ gesperrt: [...cur] });
+      return 0;
+    },
+
     seedTemplatesIfEmpty(templates) {
       if (!localStorage.getItem(K_TPL) && templates && Object.keys(templates).length) write(K_TPL, templates);
     },
