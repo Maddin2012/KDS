@@ -817,6 +817,7 @@ function render() {
   else if (S.view === 'orders') renderOrders();
   else if (S.view === 'order') renderOrder();
   renderChrome();
+  syncHistory();
 }
 
 function switchCategory(cat) {
@@ -1955,9 +1956,125 @@ function renderBuild() {
 }
 
 /* =====================================================================
+   Zurück-Navigation (Handy: Wischen vom Rand / Zurück-Taste, PC: Esc oder
+   Maus-Seitentaste) – über den Verlauf des Browsers
+   ===================================================================== */
+let applyingNav = false;      // Navigation kommt gerade aus dem Verlauf → nicht erneut eintragen
+let layerEntries = 0;         // Verlaufseinträge für offene Fenster/Ebenen
+let ignorePops = 0;           // selbst ausgelöste „Zurück“-Schritte (Fenster per Knopf geschlossen)
+
+const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, edit: !!S.edit });
+const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.edit].join('|');
+
+/* Nach jedem Zeichnen: hat sich die Seite geändert, einen neuen Schritt eintragen */
+function syncHistory() {
+  if (applyingNav) return;
+  const nav = navSnapshot(), st = history.state || {};
+  if (!st.kdsNav) { history.replaceState({ kdsNav: nav, idx: 0 }, ''); return; }
+  if (navKey(st.kdsNav) === navKey(nav)) return;
+  if (st.kdsLayer) {               // Seitenwechsel aus einem Fenster heraus: dessen Eintrag übernehmen
+    history.replaceState({ kdsNav: nav, idx: st.idx || 0 }, ''); layerEntries = Math.max(0, layerEntries - 1);
+  } else {
+    history.pushState({ kdsNav: nav, idx: (st.idx || 0) + 1 }, '');
+  }
+}
+
+/* Einen gespeicherten Schritt wiederherstellen */
+function applyNav(nav) {
+  applyingNav = true;
+  try {
+    flushTemplateSave(); flushOrderSave();
+    if (S.edit && !nav.edit) { S.edit = false; S.editTpl = null; }
+    if (nav.cat && nav.cat !== S.cat) { S.cat = nav.cat; lsSet('kds_cat', nav.cat); draft = loadDraft(nav.cat); }
+    S.view = nav.view || 'list';
+    S.openId = nav.openId;
+    if (nav.edit && amAdmin() && S.view === 'list') { S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); }
+    if (S.view === 'order') {
+      const o = S.orders.find(x => x.id === nav.orderId);
+      if (o) { S.openOrderId = o.id; S.orderEdit = normalizeOrder(o); S.orderDirty = false; } else { S.view = 'orders'; S.openOrderId = null; }
+    } else { S.openOrderId = null; }
+    if (S.view === 'protocol' && !S.protocols.find(p => p.id === S.openId)) S.view = 'archive';
+    render();
+    window.scrollTo(0, 0);
+  } finally { applyingNav = false; }
+}
+
+/* Offene Ebenen (oberste zuerst): Rückfrage, Fenster, Monteur-Auswahl, Seitenleiste am Handy */
+function openLayers() {
+  let n = 0;
+  if ($('confirm-modal-overlay').classList.contains('show')) n++;
+  if (!$('setup').classList.contains('hidden')) n++;
+  if ($('ms-monteure').classList.contains('open')) n++;
+  if (window.innerWidth <= 940 && !document.querySelector('.app').classList.contains('sidebar-collapsed')) n++;
+  return n;
+}
+/* Oberste Ebene schließen; false, wenn sie nicht geschlossen werden darf */
+function closeTopLayer() {
+  if ($('confirm-modal-overlay').classList.contains('show')) { $('confirm-modal-no').click(); return true; }
+  const ov = $('setup');
+  if (!ov.classList.contains('hidden')) {
+    // erst eine Unterseite zurück, sonst das Fenster schließen
+    const btn = ov.querySelector('[data-x="back"], [data-s="main"]')
+      || ov.querySelector('[data-x="cancel"], [data-s="close"], [data-v="close"], [data-n="close"]');
+    if (btn) { btn.click(); return true; }
+    if (ov.querySelector('[data-r="ok"]')) return false;      // Wiederherstellungs-Code: bewusst bestätigen
+    return false;                                            // Pflichtfenster (Einrichtung, PIN-Pflicht)
+  }
+  if ($('ms-monteure').classList.contains('open')) { $('ms-monteure').classList.remove('open'); return true; }
+  const app = document.querySelector('.app');
+  if (window.innerWidth <= 940 && !app.classList.contains('sidebar-collapsed')) { app.classList.add('sidebar-collapsed'); return true; }
+  return false;
+}
+/* Verlaufseinträge an die Zahl offener Ebenen angleichen */
+function syncLayers() {
+  const want = openLayers();
+  while (layerEntries < want) {
+    const st = history.state || {};
+    history.pushState({ kdsNav: st.kdsNav || navSnapshot(), idx: st.idx || 0, kdsLayer: true }, '');
+    layerEntries++;
+  }
+  if (layerEntries > want && (history.state || {}).kdsLayer) {
+    const diff = layerEntries - want;
+    layerEntries = want; ignorePops += 1; history.go(-diff);
+  }
+}
+const layerObserver = new MutationObserver(() => setTimeout(syncLayers, 0));
+[$('setup'), $('confirm-modal-overlay'), $('ms-monteure'), document.querySelector('.app')].forEach(el =>
+  layerObserver.observe(el, { attributes: true, attributeFilter: ['class'] }));
+
+window.addEventListener('popstate', async (e) => {
+  if (ignorePops) { ignorePops--; return; }
+  if (layerEntries > 0) {
+    layerEntries--;
+    if (!closeTopLayer()) setTimeout(syncLayers, 0);   // Pflichtfenster: Eintrag wiederherstellen
+    return;
+  }
+  const st = e.state || {};
+  if (!st.kdsNav) return;
+  if (S.protoEdit && navKey(st.kdsNav) !== navKey(navSnapshot())) {
+    const cur = navSnapshot();
+    if (!(await leaveProtoEdit())) { history.pushState({ kdsNav: cur, idx: (st.idx || 0) + 1 }, ''); return; }
+  }
+  applyNav(st.kdsNav);
+});
+
+/* Esc = ein Schritt zurück (Fenster schließen bzw. vorherige Seite) – nicht beim Tippen */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if ($('confirm-modal-overlay').classList.contains('show') || $('ms-monteure').classList.contains('open')) return;  // eigene Esc-Behandlung
+  const t = e.target, typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  if (!$('setup').classList.contains('hidden')) { if (!typing || t.type === 'password' || t.closest('#setup')) history.back(); return; }
+  if (typing) { t.blur(); return; }                    // erst das Feld verlassen
+  if ((history.state || {}).idx > 0 || layerEntries > 0) history.back();
+});
+
+/* =====================================================================
    Start
    ===================================================================== */
 async function start() {
+  // Ausgangspunkt im Verlauf sofort eintragen – vor allen Fenstern (Kürzel-Auswahl, Einrichtung)
+  { const st = history.state || {};
+    if (!st.kdsNav || st.kdsLayer) history.replaceState({ kdsNav: navSnapshot(), idx: st.kdsNav ? (st.idx || 0) : 0 }, ''); }
   applyTheme();
   renderBuild();
   // Seitenleiste: gemerkter Zustand; auf dem Handy standardmäßig eingeklappt

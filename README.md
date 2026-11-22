@@ -101,6 +101,11 @@ Kennzeichen und Werk-Nr. erscheinen darunter und im Ausdruck. Beim
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
 
+**Zurück.** Am Handy die Zurück-Geste (Wischen vom Rand) bzw. Zurück-Taste, am PC
+**Esc** oder die **Zurück-Taste an der Maus**: geht einen Schritt zurück. Ist ein
+Fenster offen (Einstellungen, Nutzer, Fahrzeug, Rückfrage …) oder am Handy die
+Seitenleiste, wird zuerst dieses geschlossen.
+
 **Dunkelmodus.** ⚙ Einstellungen → *Darstellung*: Hell, Dunkel oder Automatisch
 (folgt der Geräteeinstellung). Gilt je Gerät; gedruckt wird immer hell.
 
