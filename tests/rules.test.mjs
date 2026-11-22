@@ -1,6 +1,6 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'fs';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, addDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, runTransaction } from 'firebase/firestore';
 import { createHash } from 'crypto';
 
 // Gleiche Berechnung wie in der App: SHA-256 aus Werkstatt-Code, Kürzel und PIN
@@ -151,6 +151,35 @@ await t('Zähler startet bei 1', assertSucceeds(setDoc(zRef(peF, '088-20261122')
 await t('Zähler +1', assertSucceeds(setDoc(zRef(peF, '088-20261122'), { n: 2 })));
 await t('Zähler springen abgelehnt', assertFails(setDoc(zRef(peF, '088-20261122'), { n: 5 })));
 await t('Zähler zurücksetzen abgelehnt', assertFails(setDoc(zRef(peF, '088-20261122'), { n: 1 })));
+
+// ---------- Lager ----------
+const aRef = (db, id) => doc(db, 'workshops', W4, 'artikel', id);
+const bRef = (db, aid, bid) => doc(db, 'workshops', W4, 'artikel', aid, 'buchungen', bid);
+async function book(db, aid, bid, typ, menge, { fakeNeu, skipBooking } = {}) {
+  return runTransaction(db, async (tx) => {
+    const s = await tx.get(aRef(db, aid)); const cur = s.data().bestand;
+    const neu = fakeNeu !== undefined ? fakeNeu : (typ === 'Zulauf' ? cur + menge : typ === 'Entnahme' ? cur - menge : menge);
+    tx.update(aRef(db, aid), { bestand: neu, bestandVon: 'PE', lastBooking: bid });
+    if (!skipBooking) tx.set(bRef(db, aid, bid), { typ, menge: typ === 'Korrektur' ? neu - cur : menge, grund: '', ts: 1, bestandVorher: cur, bestandNachher: neu, von: 'PE' });
+  });
+}
+await t('Admin legt Artikel an', assertSucceeds(setDoc(aRef(seF, 'oel'), { sku: 'HLP46', name: 'Hydrauliköl', bestand: 0, minBestand: 50, preis: 3.5 })));
+await t('Mitarbeiter legt KEINEN Artikel an', assertFails(setDoc(aRef(peF, 'x'), { name: 'X', bestand: 0 })));
+await t('Mitarbeiter ändert KEINEN Preis', assertFails(updateDoc(aRef(peF, 'oel'), { preis: 1 })));
+await t('Mitarbeiter bucht Zulauf 100', assertSucceeds(book(peF, 'oel', 'b1', 'Zulauf', 100)));
+await t('Mitarbeiter bucht Entnahme 20,5', assertSucceeds(book(peF, 'oel', 'b2', 'Entnahme', 20.5)));
+await t('Zulauf mit Kommazahlen 0,1 + 0,2', assertSucceeds(book(peF, 'oel', 'b2b', 'Zulauf', 0.1)));
+await t('Bestand ändern OHNE Buchung abgelehnt', assertFails(book(peF, 'oel', 'b3', 'Zulauf', 5, { skipBooking: true })));
+await t('Falsche Rechnung abgelehnt (Zulauf 5, Bestand +500)', assertFails(book(peF, 'oel', 'b4', 'Zulauf', 5, { fakeNeu: 999 })));
+await t('Entnahme unter 0 abgelehnt', assertFails(book(peF, 'oel', 'b5', 'Entnahme', 1000)));
+await t('Korrektur (Inventur) durch Mitarbeiter abgelehnt', assertFails(book(peF, 'oel', 'b6', 'Korrektur', 10)));
+await t('Korrektur (Inventur) durch Admin', assertSucceeds(book(seF, 'oel', 'b7', 'Korrektur', 75)));
+await t('Alte Buchung wiederverwenden abgelehnt', assertFails(book(peF, 'oel', 'b1', 'Zulauf', 1)));
+await t('Buchung nachträglich ändern abgelehnt', assertFails(updateDoc(bRef(peF, 'oel', 'b1'), { menge: 1 })));
+await t('Mitarbeiter liest Historie', assertSucceeds(getDocs(collection(peF, 'workshops', W4, 'artikel', 'oel', 'buchungen'))));
+await t('Mitarbeiter ändert KEINE Lagerorte', assertFails(setDoc(doc(peF, 'workshops', W4, 'einstellungen', 'lager'), { lagerorte: ['X'] })));
+await t('Admin ändert Lagerorte', assertSucceeds(setDoc(doc(seF, 'workshops', W4, 'einstellungen', 'lager'), { lagerorte: ['Halle 2'] })));
+await t('Mitarbeiter löscht KEINEN Artikel', assertFails(deleteDoc(aRef(peF, 'oel'))));
 
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();

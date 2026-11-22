@@ -32,6 +32,12 @@ const S = {
   renderDeferred: false,
   protoEdit: false,         // abgeschlossenes Protokoll wird von Admin bearbeitet
   vehicles: [],             // Fuhrpark
+  articles: [],             // Lager
+  openArticleId: null,
+  artEdit: null,
+  artDirty: false,
+  bookings: [],
+  lagerCfg: {},
   orders: [],               // Werkstattaufträge
   openOrderId: null,
   orderEdit: null,          // Arbeitskopie des geöffneten Auftrags
@@ -95,13 +101,36 @@ function confirmModal(message, confirmLabel, danger = true) {
   });
 }
 
+/* Eingabe-Dialog (Ersatz für window.prompt – funktioniert auch als installierte App) */
+function promptModal(message, okLabel, { value = '', type = 'text', inputmode = '' } = {}) {
+  return new Promise((resolve) => {
+    const ov = $('confirm-modal-overlay'), yes = $('confirm-modal-yes'), no = $('confirm-modal-no');
+    $('confirm-modal-message').textContent = message;
+    $('confirm-modal-body').innerHTML = `<input id="pm-input" class="pm-input" type="${type}" ${inputmode ? `inputmode="${inputmode}"` : ''} autocomplete="off">`;
+    $('pm-input').value = value;
+    yes.textContent = okLabel || 'OK'; yes.classList.remove('btn-danger');
+    ov.classList.add('show');
+    setTimeout(() => { $('pm-input').focus(); $('pm-input').select(); }, 30);
+    const done = (r) => {
+      ov.classList.remove('show'); $('confirm-modal-body').innerHTML = '';
+      yes.removeEventListener('click', y); no.removeEventListener('click', n); ov.removeEventListener('mousedown', o); document.removeEventListener('keydown', k);
+      resolve(r);
+    };
+    const y = () => done($('pm-input').value), n = () => done(null);
+    const o = (e) => { if (e.target === ov) done(null); };
+    const k = (e) => { if (e.key === 'Escape') done(null); if (e.key === 'Enter') done($('pm-input').value); };
+    yes.addEventListener('click', y); no.addEventListener('click', n); ov.addEventListener('mousedown', o); document.addEventListener('keydown', k);
+  });
+}
+
 /* =====================================================================
    Darstellung
    ===================================================================== */
 /* Hauptgruppen der Seitenleiste: auf-/zuklappbar, Zustand je Gerät gemerkt.
    Die Gruppe der gerade geöffneten Seite ist immer aufgeklappt. */
 /* Gruppen der geöffneten Seite (äußere zuerst) – diese bleiben immer aufgeklappt */
-const activeGroups = () => (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'service']
+const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view === 'reorder') ? ['lager']
+  : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'service']
   : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
@@ -140,6 +169,12 @@ function renderNav() {
   $('nav-fleet').classList.toggle('active', S.view === 'fleet');
   $('nav-orders').classList.toggle('active', S.view === 'orders' || S.view === 'order');
   $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
+  $('nav-stock').classList.toggle('active', S.view === 'stock' || S.view === 'article');
+  $('nav-reorder').classList.toggle('active', S.view === 'reorder');
+  $('stock-count').textContent = S.articles.length;
+  const low = S.articles.filter(x => artStatus(x) !== 'ok').length;
+  $('reorder-count').textContent = low;
+  $('reorder-count').classList.toggle('count-warn', low > 0);
   $('arch-count').textContent = S.protocols.length;
   $('fleet-count').textContent = S.vehicles.length;
 
@@ -164,12 +199,15 @@ function renderChrome() {
   else if (mode === 'fleet') title = 'Fuhrpark';
   else if (mode === 'orders') title = 'Werkstattaufträge';
   else if (mode === 'order') title = 'Auftrag ' + ((S.orderEdit && S.orderEdit.nr) || '');
+  else if (mode === 'stock') title = 'Lager';
+  else if (mode === 'article') title = (S.artEdit && S.artEdit.name) || 'Artikel';
+  else if (mode === 'reorder') title = 'Bestellvorschläge';
   else if (mode === 'protocol' || mode === 'protoedit') {
     const p = S.protocols.find(x => x.id === S.openId);
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
-  $('sidebar-sub').textContent = (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-list').classList.toggle('hidden', S.view !== 'list');
@@ -178,7 +216,10 @@ function renderChrome() {
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
   $('view-orders').classList.toggle('hidden', S.view !== 'orders');
   $('view-order').classList.toggle('hidden', S.view !== 'order');
-  $('cards').classList.toggle('hidden', ['archive', 'edit', 'fleet', 'orders', 'order'].includes(mode));
+  $('view-stock').classList.toggle('hidden', S.view !== 'stock');
+  $('view-article').classList.toggle('hidden', S.view !== 'article');
+  $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
+  $('cards').classList.toggle('hidden', ['archive', 'edit', 'fleet', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
@@ -260,6 +301,316 @@ function syncHeaderVehicle() {
   if (v) { draft.header.vehId = v.id; draft.header.kz = v.kz || ''; draft.header.werk = v.werk || ''; draft.header.typ = v.typ || ''; }
   else { delete draft.header.vehId; delete draft.header.kz; delete draft.header.werk; delete draft.header.typ; }
   renderVehInfo(draft.header);
+}
+
+/* =====================================================================
+   Lager / Warenwirtschaft
+   ===================================================================== */
+const EINHEITEN = ['Stk.', 'L', 'kg', 'm', 'Dose', 'Fass', 'Set', 'Karton', 'Paar', 'Rolle'];
+const DEFAULT_KATS = ['Filter', 'Gase', 'Lampen', 'Öl', 'PSA', 'Schmierstoffe', 'Spraydosen', 'Verbrauchsmaterial'];
+const DEFAULT_ORTE = ['Hauptlager', 'Werkstatt', 'Ersatzteillager'];
+const ART_FIELDS = ['sku', 'name', 'kat', 'einheit', 'gebinde', 'lagerort', 'minBestand', 'preis', 'notes', 'suppliers'];
+const deSort = (x, y) => String(x).localeCompare(String(y), 'de', { sensitivity: 'base', numeric: true });
+const kategorien = () => [...new Set([...DEFAULT_KATS, ...(S.lagerCfg.kategorien || []), ...S.articles.map(x => x.kat).filter(Boolean)])].sort(deSort);
+const lagerorte = () => [...new Set([...DEFAULT_ORTE, ...(S.lagerCfg.lagerorte || []), ...S.articles.map(x => x.lagerort).filter(Boolean)])].sort(deSort);
+const fmtNum = (n) => (Math.round(num(n) * 1000) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
+const fmtEuro = (n) => num(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+/* Ampel: leer (≤ 0) · niedrig (≤ Mindestbestand) · ok */
+function artStatus(x) { const b = num(x.bestand), m = num(x.minBestand); return b <= 0 ? 'leer' : (b <= m ? 'niedrig' : 'ok'); }
+const ART_ST = { leer: ['bad', 'leer'], niedrig: ['pend', 'nachbestellen'], ok: ['ok', 'OK'] };
+const artBadge = (x) => { const [c, t] = ART_ST[artStatus(x)]; return `<span class="badge ${c}">${t}</span>`; };
+function normalizeArticle(x) {
+  const d = { id: x.id, bestand: num(x.bestand), bestandVon: x.bestandVon || '' };
+  ART_FIELDS.forEach(f => { d[f] = x[f] !== undefined ? x[f] : ''; });
+  d.einheit = d.einheit || 'Stk.'; d.kat = d.kat || 'Verbrauchsmaterial'; d.lagerort = d.lagerort || DEFAULT_ORTE[0];
+  d.suppliers = Array.isArray(x.suppliers) ? x.suppliers.map(s => ({ name: s.name || '', bestellNr: s.bestellNr || '', gebinde: s.gebinde || '', preis: s.preis ?? '' })) : [];
+  return d;
+}
+/* Empfohlene Bestellmenge: auf das Doppelte des Mindestbestands auffüllen (mind. 1) */
+const recQty = (x) => Math.max(1, num(x.minBestand) * 2 - num(x.bestand));
+
+function renderStock() {
+  // Filter-Auswahl befüllen (Auswahl behalten)
+  const fill = (id, list, all) => { const sel = $(id), cur = sel.value;
+    sel.innerHTML = `<option value="">${all}</option>` + list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    sel.value = list.includes(cur) ? cur : ''; };
+  fill('stock-ort', [...new Set(S.articles.map(x => x.lagerort).filter(Boolean))].sort(deSort), 'Alle Lagerorte');
+  fill('stock-kat', [...new Set(S.articles.map(x => x.kat).filter(Boolean))].sort(deSort), 'Alle Kategorien');
+  if (S.lagerError) {
+    $('stock-summary').innerHTML = '';
+    $('stock-list').innerHTML = `<div class="empty-note">${S.lagerError === 'rules'
+      ? '<b>Lager noch nicht freigeschaltet.</b><br>Die Firebase-Regeln werden beim nächsten Update eingespielt.'
+      : 'Das Lager konnte nicht geladen werden. Bitte später erneut versuchen.'}</div>`;
+    return;
+  }
+  const q = $('stock-search').value.trim().toLowerCase(), ort = $('stock-ort').value, kat = $('stock-kat').value;
+  const list = S.articles
+    .filter(x => (!ort || x.lagerort === ort) && (!kat || x.kat === kat))
+    .filter(x => !q || [x.sku, x.name, x.kat, x.lagerort, x.gebinde, x.notes, ...(x.suppliers || []).flatMap(s => [s.name, s.bestellNr])].join(' ').toLowerCase().includes(q))
+    .sort((x, y) => deSort(x.name || '', y.name || ''));
+  const total = S.articles.reduce((s, x) => s + num(x.bestand) * num(x.preis), 0);
+  const leer = S.articles.filter(x => artStatus(x) === 'leer').length, low = S.articles.filter(x => artStatus(x) === 'niedrig').length;
+  $('stock-summary').innerHTML = S.articles.length ? `<div class="fleet-summary">
+      <span class="badge cat">${S.articles.length} Artikel · Lagerwert ${esc(fmtEuro(total))}</span>
+      ${leer ? `<span class="badge bad">${leer} leer</span>` : ''}${low ? `<span class="badge pend">${low} nachbestellen</span>` : ''}
+      ${!leer && !low ? '<span class="badge ok">Alle Bestände ausreichend</span>' : ''}
+    </div>` : '';
+  if (!S.articles.length) {
+    $('stock-list').innerHTML = `<div class="empty-note">Noch keine Artikel im Lager.<br>${amAdmin() ? 'Über „+ Artikel“ den ersten anlegen.' : 'Artikel legen die Admins (SE, KÖ) an.'}</div>`;
+    return;
+  }
+  if (!list.length) { $('stock-list').innerHTML = '<div class="empty-note">Kein Artikel zu dieser Auswahl.</div>'; return; }
+  $('stock-list').innerHTML = list.map(x => `
+    <button class="arch-row art-row" data-aid="${esc(x.id)}" type="button">
+      <span class="arch-date mono">${esc(x.sku || '—')}</span>
+      <span class="arch-main">
+        <span class="veh">${esc(x.name || 'Ohne Bezeichnung')}</span>
+        <span class="meta" style="display:block">${esc([x.kat, x.lagerort, x.gebinde].filter(Boolean).join(' · '))}</span>
+      </span>
+      <span class="badges"><span class="art-qty">${esc(fmtNum(x.bestand))} ${esc(x.einheit || '')}</span>${artBadge(x)}</span>
+    </button>`).join('');
+}
+
+/* ---------- Ein Artikel ---------- */
+let unsubBookings = null;
+function closeArticleSubs() { if (unsubBookings) { unsubBookings(); unsubBookings = null; } S.openArticleId = S.view === 'article' ? S.openArticleId : null; }
+function subscribeBookings(aid) {
+  if (unsubBookings) unsubBookings();
+  S.bookings = [];
+  unsubBookings = S.store.onBookings(aid, (list) => { S.bookings = list; if (S.view === 'article' && S.openArticleId === aid) renderHistory(); });
+}
+function openArticle(id) {
+  const x = S.articles.find(y => y.id === id);
+  if (!x) return;
+  flushArtSave();
+  S.openArticleId = id; S.artEdit = normalizeArticle(x); S.artDirty = false;
+  subscribeBookings(id);
+  S.view = 'article'; render(); window.scrollTo(0, 0);
+}
+async function newArticle() {
+  if (!amAdmin()) return;
+  const name = await promptModal('Bezeichnung des neuen Artikels:', 'Anlegen', { value: '' });
+  if (!name || !name.trim()) return;
+  const id = S.store.newArticleId();
+  const d = { sku: '', name: name.trim(), kat: 'Verbrauchsmaterial', einheit: 'Stk.', gebinde: '', lagerort: DEFAULT_ORTE[0],
+    minBestand: 0, preis: 0, notes: '', suppliers: [] };
+  try {
+    S.store.saveArticle(id, d, S.me, true).catch(err => { if (err && err.code === 'permission-denied') adminRejected(); });
+    S.articles.push({ ...d, id, bestand: 0 });
+    openArticle(id);
+    showToast('Artikel angelegt – Bestand über „+ Zulauf“ einbuchen');
+  } catch (e) { showToast('Artikel konnte nicht angelegt werden'); }
+}
+
+function renderArticle() {
+  const x = S.artEdit;
+  if (!x) { S.view = 'stock'; render(); return; }
+  const live = S.articles.find(y => y.id === x.id) || x;
+  const admin = amAdmin(), dis = admin ? '' : 'disabled';
+  const optList = (list, cur, addLabel) => [...new Set([...list, cur].filter(Boolean))].sort(deSort)
+    .map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('') + (admin ? `<option value="__neu__">${addLabel}</option>` : '');
+  $('view-article').innerHTML = `
+    <div class="proto-banner no-print">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn-sec" data-act="back-stock">← Alle Artikel</button>
+        <span class="o-saved" id="a-saved"></span>
+      </div>
+      <div class="actions">${admin ? '<button class="btn-sec btn-danger" data-act="delete-article">🗑️ Löschen</button>' : ''}</div>
+    </div>
+
+    <div class="art-cards" id="a-cards"></div>
+
+    <div class="box no-print">
+      <div class="sec-title"><div class="title-left"><span>Buchen</span></div></div>
+      <div class="book-row">
+        <input id="bk-qty" class="o-field-in" inputmode="decimal" placeholder="Menge (${esc(x.einheit)})" autocomplete="off">
+        <input id="bk-note" class="o-field-in" placeholder="Grund / Auftrag-Nr. …" autocomplete="off">
+        <button class="btn-sec btn-in" data-act="book-in" type="button">+ Zulauf</button>
+        <button class="btn-sec btn-danger" data-act="book-out" type="button">− Entnahme</button>
+        ${admin ? '<button class="btn-sec" data-act="book-fix" type="button" title="Bestand nach Inventur festlegen">Inventur</button>' : ''}
+      </div>
+      <p class="proto-meta" style="margin:8px 0 0">Gebucht wird als <b>${esc(S.me || '?')}</b>. Buchen braucht Internet.${live.bestandVon ? ' Letzte Buchung von ' + esc(live.bestandVon) + '.' : ''}</p>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Stammdaten</span></div></div>
+      ${admin ? '' : '<p class="o-locked no-print">Stammdaten ändern nur die Admins (SE, KÖ).</p>'}
+      <div class="art-grid">
+        <div class="o-field"><label>Art.-Nr.</label><input data-af="sku" value="${esc(x.sku)}" ${dis} placeholder="z. B. HLP-46"></div>
+        <div class="o-field art-wide"><label>Bezeichnung</label><input data-af="name" value="${esc(x.name)}" ${dis}></div>
+        <div class="o-field"><label>Kategorie</label><select data-af="kat" ${dis}>${optList(kategorien(), x.kat, '+ Neue Kategorie …')}</select></div>
+        <div class="o-field"><label>Lagerort</label><select data-af="lagerort" ${dis}>${optList(lagerorte(), x.lagerort, '+ Neuer Lagerort …')}</select></div>
+        <div class="o-field"><label>Einheit</label><select data-af="einheit" ${dis}>${[...new Set([...EINHEITEN, x.einheit])].map(v => `<option ${v === x.einheit ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
+        <div class="o-field"><label>Gebinde / Verpackung</label><input data-af="gebinde" value="${esc(x.gebinde)}" ${dis} placeholder="z. B. 20-L-Kanister"></div>
+        <div class="o-field"><label>Mindestbestand</label><input data-af="minBestand" inputmode="decimal" value="${esc(String(x.minBestand).replace('.', ','))}" ${dis}></div>
+        <div class="o-field"><label>Einzelpreis (€)</label><input data-af="preis" inputmode="decimal" value="${esc(String(x.preis).replace('.', ','))}" ${dis}></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Lieferanten &amp; Bezugsquellen</span></div>
+        ${admin ? '<button class="btn-sec no-print" data-act="add-supplier" type="button">+ Lieferant</button>' : ''}</div>
+      ${x.suppliers.length ? `<table class="service-table sup-table">
+        <thead><tr><th>Lieferant</th><th>Bestell-Nr.</th><th>Gebinde</th><th>Preis (€)</th>${admin ? '<th class="no-print"></th>' : ''}</tr></thead>
+        <tbody>${x.suppliers.map((s, i) => `<tr>
+          <td data-l="Lieferant"><input data-sf="name" data-idx="${i}" value="${esc(s.name)}" ${dis}></td>
+          <td data-l="Bestell-Nr."><input data-sf="bestellNr" data-idx="${i}" value="${esc(s.bestellNr)}" ${dis}></td>
+          <td data-l="Gebinde"><input data-sf="gebinde" data-idx="${i}" value="${esc(s.gebinde)}" ${dis}></td>
+          <td data-l="Preis"><input data-sf="preis" data-idx="${i}" inputmode="decimal" value="${esc(String(s.preis).replace('.', ','))}" ${dis}></td>
+          ${admin ? `<td class="no-print"><button class="btn-del-row" data-act="del-supplier" data-idx="${i}" title="Entfernen">✕</button></td>` : ''}
+        </tr>`).join('')}</tbody></table>` : '<p class="proto-meta">Keine Lieferanten hinterlegt.</p>'}
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Bemerkungen / Hinweise</span></div></div>
+      <textarea class="o-ta o-notes" data-af="notes" rows="3" ${dis} placeholder="Spezifikation, Freigaben, Ersatz-Teilenummern …">${esc(x.notes)}</textarea>
+    </div>
+
+    <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Historie</span></div></div>
+      <div id="a-history"></div>
+    </div>`;
+  renderArtCards();
+  renderHistory();
+  renderChrome();
+  $('view-article').querySelectorAll('.o-ta').forEach(autoSize);
+}
+/* Bestand, Ampel und Werte – wird bei jeder Buchung aktualisiert, ohne Eingaben zu stören */
+function renderArtCards() {
+  const box = $('a-cards'), x = S.artEdit; if (!box || !x) return;
+  const live = S.articles.find(y => y.id === x.id) || x, st = artStatus({ bestand: live.bestand, minBestand: x.minBestand });
+  box.innerHTML = `
+      <div class="art-card st-${st}"><label>Bestand</label><b>${esc(fmtNum(live.bestand))}</b><span>${esc(x.einheit)}</span>${artBadge({ bestand: live.bestand, minBestand: x.minBestand })}</div>
+      <div class="art-card"><label>Mindestbestand</label><b>${esc(fmtNum(x.minBestand))}</b><span>${esc(x.einheit)}</span></div>
+      <div class="art-card"><label>Einzelpreis</label><b>${esc(fmtEuro(x.preis))}</b><span>je ${esc(x.einheit)}</span></div>
+      <div class="art-card"><label>Gesamtwert</label><b>${esc(fmtEuro(num(live.bestand) * num(x.preis)))}</b><span>&nbsp;</span></div>`;
+}
+function renderHistory() {
+  const box = $('a-history'); if (!box) return;
+  const x = S.artEdit;
+  if (!S.bookings.length) { box.innerHTML = '<p class="proto-meta">Noch keine Buchungen.</p>'; return; }
+  box.innerHTML = `<table class="service-table hist-table">
+    <thead><tr><th>Datum</th><th>Art</th><th>Menge</th><th>Bestand danach</th><th>Grund</th><th>Wer</th></tr></thead>
+    <tbody>${S.bookings.map(b => {
+      const d = new Date(b.ts || 0), m = num(b.menge);
+      const sign = b.typ === 'Zulauf' ? '+' : b.typ === 'Entnahme' ? '−' : (m >= 0 ? '+' : '−');
+      return `<tr class="h-${esc(b.typ)}">
+        <td data-l="Datum">${esc(d.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</td>
+        <td data-l="Art">${esc(b.typ)}</td>
+        <td data-l="Menge" class="mono">${sign}${esc(fmtNum(Math.abs(m)))} ${esc(x ? x.einheit : '')}</td>
+        <td data-l="Bestand" class="mono">${esc(fmtNum(b.bestandNachher))}</td>
+        <td data-l="Grund">${esc(b.grund || '')}</td>
+        <td data-l="Wer">${esc(b.von || '')}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+async function onArticleInput(t, type) {
+  const x = S.artEdit;
+  if (!amAdmin()) return;
+  if (t.dataset.af) {
+    const f = t.dataset.af;
+    if ((f === 'kat' || f === 'lagerort') && t.value === '__neu__') {
+      if (type !== 'change') return;
+      const label = f === 'kat' ? 'Name der neuen Kategorie:' : 'Name des neuen Lagerorts:';
+      const v = ((await promptModal(label, 'Hinzufügen')) || '').trim();
+      if (!v) { t.value = x[f]; return; }
+      const key = f === 'kat' ? 'kategorien' : 'lagerorte';
+      const list = [...new Set([...(S.lagerCfg[key] || []), v])];
+      S.lagerCfg = { ...S.lagerCfg, [key]: list };
+      S.store.saveLagerCfg({ [key]: list }).catch(() => {});
+      x[f] = v; renderArticle(); queueArtSave(); return;
+    }
+    x[f] = (f === 'minBestand' || f === 'preis') ? t.value : t.value;
+    if (t.tagName === 'TEXTAREA') autoSize(t);
+    if (f === 'name') $('main-title').textContent = t.value || 'Artikel';
+    if (f === 'minBestand' || f === 'preis' || f === 'einheit') renderArtCards();
+    queueArtSave();
+  } else if (t.dataset.sf) {
+    const s = x.suppliers[+t.dataset.idx]; if (!s) return;
+    s[t.dataset.sf] = t.value; queueArtSave();
+  }
+}
+let artSaveTimer = null;
+function queueArtSave() {
+  S.artDirty = true;
+  const el = $('a-saved'); if (el) el.textContent = 'wird gespeichert …';
+  clearTimeout(artSaveTimer); artSaveTimer = setTimeout(saveArtNow, 600);
+}
+function saveArtNow() {
+  clearTimeout(artSaveTimer); artSaveTimer = null;
+  const x = S.artEdit;
+  if (!x || !S.artDirty || !amAdmin()) return;
+  S.artDirty = false;
+  const d = {};
+  ART_FIELDS.forEach(f => { d[f] = x[f]; });
+  d.minBestand = num(d.minBestand); d.preis = num(d.preis);
+  d.suppliers = x.suppliers.map(s => ({ name: String(s.name || '').trim(), bestellNr: String(s.bestellNr || '').trim(), gebinde: String(s.gebinde || '').trim(), preis: num(s.preis) }));
+  ['sku', 'name', 'gebinde', 'notes'].forEach(f => { d[f] = String(d[f] || '').trim(); });
+  const local = S.articles.find(y => y.id === x.id); if (local) Object.assign(local, d);
+  S.store.saveArticle(x.id, d, S.me, false)
+    .then(() => { const el = $('a-saved'); if (el && !S.artDirty) el.textContent = 'gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); })
+    .catch((err) => { if (err && err.code === 'permission-denied') adminRejected(); else { S.artDirty = true; setTimeout(saveArtNow, 3000); } });
+}
+function flushArtSave() { if (artSaveTimer) saveArtNow(); }
+
+async function doBooking(typ) {
+  const x = S.artEdit; if (!x) return;
+  const qty = num($('bk-qty').value);
+  if (!(qty > 0)) { showToast('Bitte eine Menge größer 0 eingeben'); $('bk-qty').focus(); return; }
+  const grund = $('bk-note').value.trim();
+  try {
+    const neu = await S.store.book(x.id, { typ, menge: qty, grund }, S.me);
+    $('bk-qty').value = ''; $('bk-note').value = '';
+    showToast(`${typ === 'Zulauf' ? 'Zulauf' : 'Entnahme'} gebucht – Bestand ${fmtNum(neu)} ${x.einheit}`);
+  } catch (e) {
+    if (e && e.code === 'zu-wenig') showToast(`Nur ${fmtNum(e.bestand)} ${x.einheit} am Lager – Entnahme nicht gebucht`);
+    else if (e && e.code === 'permission-denied') showToast('Buchung abgelehnt – bitte erneut versuchen');
+    else showToast((e && e.message) || 'Buchen fehlgeschlagen');
+  }
+}
+async function doInventur() {
+  const x = S.artEdit; if (!x || !amAdmin()) return;
+  const live = S.articles.find(y => y.id === x.id) || x;
+  const v = await promptModal(`Gezählter Bestand für „${x.name}“ (${x.einheit}). Aktuell: ${fmtNum(live.bestand)}`, 'Bestand festlegen', { value: String(fmtNum(live.bestand)), inputmode: 'decimal' });
+  if (v === null) return;
+  const n = num(v);
+  if (!(n >= 0) || String(v).trim() === '') { showToast('Bitte einen Bestand ab 0 eingeben'); return; }
+  try {
+    await S.store.book(x.id, { typ: 'Korrektur', menge: n, grund: 'Inventur / Bestandskorrektur' }, S.me);
+    showToast('Bestand auf ' + fmtNum(n) + ' ' + x.einheit + ' gesetzt');
+  } catch (e) { if (e && e.code === 'permission-denied') adminRejected(); else showToast((e && e.message) || 'Korrektur fehlgeschlagen'); }
+}
+async function deleteArticle() {
+  const x = S.artEdit; if (!x || !amAdmin()) return;
+  if (!(await confirmModal(`Artikel „${x.name}“ samt aller Buchungen endgültig löschen?`, 'Löschen'))) return;
+  try {
+    clearTimeout(artSaveTimer); S.artDirty = false;
+    await S.store.deleteArticle(x.id);
+    closeArticleSubs(); S.openArticleId = null; S.artEdit = null; S.view = 'stock'; render(); showToast('Artikel gelöscht');
+  } catch (e) { if (e && e.code === 'permission-denied') adminRejected(); else showToast((e && e.message) || 'Löschen fehlgeschlagen'); }
+}
+
+/* ---------- Bestellvorschläge ---------- */
+function renderReorder() {
+  const low = S.articles.filter(x => artStatus(x) !== 'ok').sort((x, y) => deSort(x.name || '', y.name || ''));
+  if (!S.articles.length) { $('view-reorder').innerHTML = '<div class="empty-note">Noch keine Artikel im Lager.</div>'; return; }
+  if (!low.length) { $('view-reorder').innerHTML = '<div class="empty-note">✓ Alle Bestände liegen über dem Mindestbestand – nichts nachzubestellen.</div>'; return; }
+  $('view-reorder').innerHTML = `
+    <p class="proto-meta no-print" style="margin:0 0 10px">Alle Artikel am oder unter dem Mindestbestand. Empfohlen: auf das Doppelte des Mindestbestands auffüllen.
+      Stand ${esc(new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}.</p>
+    <table class="fleet-table reorder-table">
+      <thead><tr><th>Art.-Nr.</th><th>Artikel</th><th>Lagerort</th><th>Bestand</th><th>Mindest</th><th>Empfohlen</th><th>Lieferant</th></tr></thead>
+      <tbody>${low.map(x => { const s = (x.suppliers || [])[0] || {}; return `
+        <tr class="fleet-row art-row" data-aid="${esc(x.id)}">
+          <td data-l="Art.-Nr." class="mono">${esc(x.sku || '—')}</td>
+          <td data-l="Artikel"><b>${esc(x.name)}</b> ${artBadge(x)}</td>
+          <td data-l="Lagerort">${esc(x.lagerort || '—')}</td>
+          <td data-l="Bestand" class="mono">${esc(fmtNum(x.bestand))} ${esc(x.einheit)}</td>
+          <td data-l="Mindest" class="mono">${esc(fmtNum(x.minBestand))} ${esc(x.einheit)}</td>
+          <td data-l="Empfohlen" class="mono"><b>+${esc(fmtNum(recQty(x)))} ${esc(x.einheit)}</b></td>
+          <td data-l="Lieferant">${esc([s.name, s.bestellNr].filter(Boolean).join(' · ') || '—')}</td>
+        </tr>`; }).join('')}</tbody>
+    </table>`;
 }
 
 /* =====================================================================
@@ -828,6 +1179,9 @@ function render() {
   else if (S.view === 'fleet') renderFleet();
   else if (S.view === 'orders') renderOrders();
   else if (S.view === 'order') renderOrder();
+  else if (S.view === 'stock') renderStock();
+  else if (S.view === 'article') renderArticle();
+  else if (S.view === 'reorder') renderReorder();
   renderChrome();
   syncHistory();
 }
@@ -1776,6 +2130,14 @@ const actions = {
   },
   'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
   'new-order': () => openNewOrder(),
+  'new-article': () => newArticle(),
+  'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
+  'book-in': () => doBooking('Zulauf'),
+  'book-out': () => doBooking('Entnahme'),
+  'book-fix': () => doInventur(),
+  'delete-article': () => deleteArticle(),
+  'add-supplier': () => { if (!amAdmin()) return; S.artEdit.suppliers.push({ name: '', bestellNr: '', gebinde: '', preis: '' }); renderArticle(); queueArtSave(); },
+  'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'back-orders': () => { flushOrderSave(); S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); },
   'order-add-row': () => addOrderRow(),
   'order-del-row': (btn) => {
@@ -1845,9 +2207,15 @@ document.addEventListener('click', (e) => {
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'fleet') { flushTemplateSave(); flushOrderSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.view = 'orders'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'stock' || nav.dataset.view === 'reorder') {
+      flushTemplateSave(); flushOrderSave(); flushArtSave(); closeArticleSubs();
+      S.view = nav.dataset.view; render(); window.scrollTo(0, 0);
+    }
     if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
     return;
   }
+  const arow = e.target.closest('.art-row');
+  if (arow) { openArticle(arow.dataset.aid); return; }
   const orow = e.target.closest('.order-row');
   if (orow) { openOrder(orow.dataset.oid); return; }
   const vrow = e.target.closest('.fleet-row');
@@ -1872,6 +2240,7 @@ $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
 $('orders-search').addEventListener('input', renderOrders);
 $('orders-status').addEventListener('change', renderOrders);
+['stock-search', 'stock-ort', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
 
 /* Status-Logik i.O. / n.i.O. / behoben
    i.O. schließt n.i.O. und behoben aus; behoben setzt n.i.O.; n.i.O. abwählen nimmt behoben weg. */
@@ -1893,6 +2262,7 @@ function handleStatus(chk) {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (S.view === 'order' && S.orderEdit && t.closest('#view-order')) { onOrderInput(t); return; }
+  if (S.view === 'article' && S.artEdit && t.closest('#view-article')) { onArticleInput(t, e.type); return; }
   if (S.view === 'protocol' && S.protoEdit) {
     if (t.classList.contains('chk-status')) applyStatusLogic(t);
     if (t.id === 'fDate') markEmptyDate();
@@ -1917,6 +2287,7 @@ document.addEventListener('change', (e) => {
 document.addEventListener('input', (e) => {
   const t = e.target;
   if (S.view === 'order' && S.orderEdit && t.closest('#view-order')) { onOrderInput(t); return; }
+  if (S.view === 'article' && S.artEdit && t.closest('#view-article')) { onArticleInput(t, e.type); return; }
   if (HEADER_FIELDS.includes(t.id)) {
     if (S.view !== 'list') return;
     draft.header[t.id] = t.value;
@@ -1974,8 +2345,8 @@ let applyingNav = false;      // Navigation kommt gerade aus dem Verlauf → nic
 let layerEntries = 0;         // Verlaufseinträge für offene Fenster/Ebenen
 let ignorePops = 0;           // selbst ausgelöste „Zurück“-Schritte (Fenster per Knopf geschlossen)
 
-const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, edit: !!S.edit });
-const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.edit].join('|');
+const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit });
+const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit].join('|');
 
 /* Nach jedem Zeichnen: hat sich die Seite geändert, einen neuen Schritt eintragen */
 function syncHistory() {
@@ -2000,6 +2371,12 @@ function applyNav(nav) {
     S.view = nav.view || 'list';
     S.openId = nav.openId;
     if (nav.edit && amAdmin() && S.view === 'list') { S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); }
+    flushArtSave();
+    if (S.view === 'article') {
+      const ar = S.articles.find(x => x.id === nav.artId);
+      if (ar) { S.openArticleId = ar.id; S.artEdit = normalizeArticle(ar); S.artDirty = false; subscribeBookings(ar.id); }
+      else { S.view = 'stock'; S.openArticleId = null; }
+    } else { closeArticleSubs(); }
     if (S.view === 'order') {
       const o = S.orders.find(x => x.id === nav.orderId);
       if (o) { S.openOrderId = o.id; S.orderEdit = normalizeOrder(o); S.orderDirty = false; } else { S.view = 'orders'; S.openOrderId = null; }
@@ -2150,6 +2527,25 @@ async function start() {
     if (a && a.isContentEditable && $('groups-container').contains(a)) { S.renderDeferred = true; return; }
     renderFill();
   });
+  S.store.onLagerCfg((cfg) => { S.lagerCfg = cfg || {}; });
+  S.store.onArticles((list) => {
+    S.lagerError = false;
+    S.articles = list;
+    renderNav();
+    if (S.view === 'stock') renderStock();
+    if (S.view === 'reorder') renderReorder();
+    if (S.view === 'article' && S.openArticleId) {
+      const live = list.find(x => x.id === S.openArticleId);
+      if (!live) { closeArticleSubs(); S.view = 'stock'; S.openArticleId = null; S.artEdit = null; render(); showToast('Der Artikel wurde gelöscht'); return; }
+      const ae = document.activeElement;
+      const typing = ae && $('view-article').contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+      if (!S.artDirty && !typing && !$('confirm-modal-overlay').classList.contains('show')) { S.artEdit = normalizeArticle(live); renderArticle(); }
+      else renderArtCards();   // nur Bestand/Ampel aktualisieren, ohne die Eingabe zu stören
+    }
+  }, (err) => {
+    S.lagerError = err && err.code === 'permission-denied' ? 'rules' : 'other';
+    if (S.view === 'stock') renderStock();
+  });
   S.store.onOrders((list) => {
     S.ordersError = false;
     S.orders = list;
@@ -2212,7 +2608,7 @@ function busyForReload() {
   const overlayOpen = !$('setup').classList.contains('hidden') || $('confirm-modal-overlay').classList.contains('show');
   const a = document.activeElement;
   const typing = a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-  return S.edit || S.protoEdit || overlayOpen || typing || !!touchDrag;
+  return S.edit || S.protoEdit || S.artDirty || overlayOpen || typing || !!touchDrag;
 }
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.KDS_NO_SW) {

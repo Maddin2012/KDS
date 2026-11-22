@@ -839,3 +839,47 @@
   .nav-sub.has-active > .nav-sub-h { color:var(--orange) }
   .nav-sub > .nav-group-b { margin-left:12px; padding-bottom:4px }
   .nav-sub-h .chev { font-size:12px }
+
+  /* ---------- Lager ---------- */
+  .nav-item .count.count-warn { background:#b42318; color:#fff }
+  .art-row .art-qty { font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px; white-space:nowrap }
+  .art-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px }
+  .art-card { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:2px }
+  .art-card label { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.1em; font-size:11px; color:var(--steel); font-weight:700 }
+  .art-card b { font-family:'IBM Plex Mono',monospace; font-size:22px; line-height:1.2 }
+  .art-card span { font-size:12px; color:var(--steel) }
+  .art-card .badge { align-self:flex-start; margin-top:4px }
+  .art-card.st-leer { border-left:4px solid #b42318 } .art-card.st-niedrig { border-left:4px solid var(--orange) } .art-card.st-ok { border-left:4px solid var(--done) }
+  .art-grid { display:grid; grid-template-columns:1fr 2fr 1fr 1fr; gap:10px }
+  .art-grid .o-field select, .o-field-in, .pm-input { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px 10px; font-size:15px;
+    background:var(--surface); color:var(--text) }
+  .art-grid .o-field input:disabled, .art-grid .o-field select:disabled, .sup-table input:disabled, .o-notes:disabled { background:var(--disabled); color:var(--text); opacity:1 }
+  .o-field-in:focus, .pm-input:focus, .art-grid select:focus { outline:none; border-color:var(--orange); box-shadow:0 0 0 2px var(--orange-lt) }
+  .pm-input { margin-top:10px; font-family:'IBM Plex Mono',monospace }
+  .book-row { display:grid; grid-template-columns:150px 1fr auto auto auto; gap:8px; align-items:center }
+  .book-row .btn-sec { white-space:nowrap; padding:9px 14px }
+  .btn-in { background:#e3f4ec !important; color:var(--done) !important; border-color:#b8e0cc !important; font-weight:700 }
+  .sup-table input { width:100%; border:1px solid var(--line); border-radius:4px; padding:6px 7px; background:var(--surface); color:var(--text) }
+  .hist-table td { font-size:13px } .hist-table tr.h-Zulauf td:nth-child(3) { color:var(--done) }
+  .hist-table tr.h-Entnahme td:nth-child(3) { color:#b42318 } .hist-table tr.h-Korrektur td:nth-child(2) { color:var(--orange-dk); font-weight:600 }
+  .reorder-table .badge { margin-left:4px }
+  html[data-theme="dark"] .btn-in { background:#16352a !important; color:#6fdcaa !important; border-color:#24563f !important }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .btn-in { background:#16352a !important; color:#6fdcaa !important; border-color:#24563f !important } }
+  @media (max-width:760px) {
+    .art-cards { grid-template-columns:1fr 1fr }
+    .art-grid { grid-template-columns:1fr 1fr } .art-grid .art-wide { grid-column:1 / -1 }
+    .book-row { grid-template-columns:1fr 1fr } .book-row #bk-note { grid-column:1 / -1; order:-1 } .book-row #bk-qty { grid-column:1 / -1; order:-2 }
+    .sup-table, .sup-table tbody, .sup-table tr, .sup-table td, .hist-table, .hist-table tbody, .hist-table tr, .hist-table td { display:block; width:100% }
+    .sup-table thead, .hist-table thead { display:none }
+    .sup-table tr, .hist-table tr { border:1px solid var(--line); border-radius:8px; margin-bottom:8px; padding:6px 0 }
+    .sup-table td, .hist-table td { border:0 !important; padding:3px 10px; display:flex; gap:10px; align-items:center }
+    .sup-table td::before, .hist-table td::before { content:attr(data-l); min-width:90px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;
+      letter-spacing:.08em; font-size:11px; color:var(--steel); font-weight:700 }
+  }
+  @media print {
+    .art-cards { grid-template-columns:repeat(4,1fr) !important }
+    .art-card b { font-size:16px }
+    .art-grid { grid-template-columns:1fr 2fr 1fr 1fr !important }
+    .art-grid .o-field input, .art-grid .o-field select, .sup-table input { border:0 !important; padding:0 !important; background:none !important; appearance:none }
+  }
+  .hist-table th, .sup-table th { text-align:left }

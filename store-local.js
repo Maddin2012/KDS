@@ -6,6 +6,9 @@ const K_PROTO = 'kds_local_protocols';
 const K_PINS = 'kds_local_pins';
 const K_FLEET = 'kds_local_fleet';
 const K_ORDERS = 'kds_local_orders';
+const K_ART = 'kds_local_articles';
+const K_BOOK = 'kds_local_bookings';
+const K_LCFG = 'kds_local_lagercfg';
 const K_COUNT = 'kds_local_counters';
 const K_CLAIM = 'kds_local_claim';
 const K_REC = 'kds_local_recoveries';
@@ -34,7 +37,8 @@ export function createLocalStore() {
   const tplSubs = new Set(), protoSubs = new Set();
   const emitTpl = () => tplSubs.forEach(cb => cb(read(K_TPL, {})));
   const emitProto = () => protoSubs.forEach(cb => cb(read(K_PROTO, [])));
-  const fleetSubs = new Set(), orderSubs = new Set();
+  const fleetSubs = new Set(), orderSubs = new Set(), artSubs = new Set(), bookSubs = new Set(), cfgSubs = new Set();
+  const emitArt = () => artSubs.forEach(cb => cb(read(K_ART, [])));
   const emitOrders = () => orderSubs.forEach(cb => cb(read(K_ORDERS, []).slice().sort((a, b) => (b.created || 0) - (a.created || 0))));
   const emitFleet = () => fleetSubs.forEach(cb => cb(read(K_FLEET, [])));
 
@@ -99,6 +103,38 @@ export function createLocalStore() {
       if (!write(K_TPL, all)) throw new Error('Speicher voll');
       emitTpl();
     },
+
+    /* ---------- Lager ---------- */
+    onArticles(cb) { artSubs.add(cb); cb(read(K_ART, [])); return () => artSubs.delete(cb); },
+    newArticleId() { return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
+    async saveArticle(id, data, by, isNew) {
+      const list = read(K_ART, []); const i = list.findIndex(a => a.id === id);
+      const d = { ...(i >= 0 ? list[i] : {}), ...data, id, updatedBy: by || '', updatedAt: Date.now() };
+      if (isNew) d.bestand = 0;
+      if (i >= 0) list[i] = d; else list.push(d);
+      write(K_ART, list); emitArt();
+    },
+    async deleteArticle(id) {
+      write(K_ART, read(K_ART, []).filter(a => a.id !== id));
+      const b = read(K_BOOK, {}); delete b[id]; write(K_BOOK, b); emitArt();
+    },
+    async book(aid, { typ, menge, grund }, by) {
+      const list = read(K_ART, []); const a = list.find(x => x.id === aid);
+      if (!a) throw new Error('Artikel nicht gefunden.');
+      const cur = Number(a.bestand) || 0; let neu;
+      if (typ === 'Zulauf') neu = cur + menge;
+      else if (typ === 'Entnahme') { if (menge > cur) throw Object.assign(new Error('Zu wenig Bestand.'), { code: 'zu-wenig', bestand: cur }); neu = cur - menge; }
+      else neu = menge;
+      a.bestand = neu; a.bestandVon = by || ''; write(K_ART, list);
+      const b = read(K_BOOK, {}); (b[aid] = b[aid] || []).unshift({ id: 'b' + Date.now(), typ, menge: typ === 'Korrektur' ? neu - cur : menge,
+        grund: grund || '', ts: Date.now(), bestandVorher: cur, bestandNachher: neu, von: by || '' });
+      b[aid] = b[aid].slice(0, 100); write(K_BOOK, b);
+      emitArt(); bookSubs.forEach(x => { if (x.aid === aid) x.cb(b[aid]); });
+      return neu;
+    },
+    onBookings(aid, cb) { const x = { aid, cb }; bookSubs.add(x); cb(read(K_BOOK, {})[aid] || []); return () => bookSubs.delete(x); },
+    onLagerCfg(cb) { cfgSubs.add(cb); cb(read(K_LCFG, {})); return () => cfgSubs.delete(cb); },
+    async saveLagerCfg(data) { write(K_LCFG, { ...read(K_LCFG, {}), ...data }); cfgSubs.forEach(cb => cb(read(K_LCFG, {}))); },
 
     /* ---------- Werkstattaufträge ---------- */
     onOrders(cb) { orderSubs.add(cb); emitOrders(); return () => orderSubs.delete(cb); },

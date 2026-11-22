@@ -55,6 +55,19 @@ service cloud.firestore {
         && data.rec == get(/databases/$(database)/documents/workshops/$(wid)/recoveries/$(code)).data.hash;
     }
 
+    // Bestandsänderung durch Nicht-Admins: nur Bestandsfelder, nur mit neuer Buchung
+    // (Zulauf: alt + Menge, Entnahme: alt − Menge, nie unter 0).
+    function bookingUpdateOk(wid, aid) {
+      let b = getAfter(/databases/$(database)/documents/workshops/$(wid)/artikel/$(aid)/buchungen/$(request.resource.data.lastBooking)).data;
+      return isMember(wid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bestand', 'bestandAt', 'bestandVon', 'lastBooking'])
+        && request.resource.data.bestand is number && request.resource.data.bestand >= 0
+        && !exists(/databases/$(database)/documents/workshops/$(wid)/artikel/$(aid)/buchungen/$(request.resource.data.lastBooking))
+        && b.menge is number && b.menge > 0
+        && ((b.typ == 'Zulauf' && request.resource.data.bestand == resource.data.bestand + b.menge)
+            || (b.typ == 'Entnahme' && request.resource.data.bestand == resource.data.bestand - b.menge));
+    }
+
     // Allererste PIN einer Werkstatt: nur solange noch keine einzige gesetzt ist.
     function noPinsYet(wid) {
       return !exists(/databases/$(database)/documents/workshops/$(wid)/pins/$('SE'))
@@ -140,6 +153,33 @@ service cloud.firestore {
 
       // Vorlagen: lesen alle Mitglieder, ändern nur Admins.
       match /templates/{cat} {
+        allow read: if isMember(wid);
+        allow write: if isAdmin(wid);
+      }
+
+      // Lager: Artikel-Stammdaten nur Admins. Den Bestand ändern alle – aber nur zusammen
+      // mit einer neuen Buchung (gleiche Transaktion), deren Rechnung stimmen muss.
+      match /artikel/{aid} {
+        allow read: if isMember(wid);
+        allow create, delete: if isAdmin(wid);
+        allow update: if isAdmin(wid) || bookingUpdateOk(wid, aid);
+
+        match /buchungen/{bid} {
+          allow read: if isMember(wid);
+          allow create: if isMember(wid)
+            && request.resource.data.typ in ['Zulauf', 'Entnahme', 'Korrektur']
+            && (request.resource.data.typ != 'Korrektur' || isAdmin(wid))
+            && request.resource.data.menge is number
+            && request.resource.data.bestandNachher
+                 == getAfter(/databases/$(database)/documents/workshops/$(wid)/artikel/$(aid)).data.bestand
+            && getAfter(/databases/$(database)/documents/workshops/$(wid)/artikel/$(aid)).data.lastBooking == bid;
+          allow update: if false;
+          allow delete: if isAdmin(wid);
+        }
+      }
+
+      // Lager-Einstellungen (Kategorien, Lagerorte): lesen alle, ändern Admins.
+      match /einstellungen/{name} {
         allow read: if isMember(wid);
         allow write: if isAdmin(wid);
       }

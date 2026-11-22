@@ -68,7 +68,8 @@
           <span>Lager</span><span class="chev" aria-hidden="true">▾</span>
         </button>
         <div class="nav-group-b">
-          <div class="nav-item nav-soon" aria-disabled="true">Lager &amp; Bestellungen <span class="count">folgt</span></div>
+          <div class="nav-item" id="nav-stock" data-view="stock">Artikel <span class="count" id="stock-count">0</span></div>
+          <div class="nav-item" id="nav-reorder" data-view="reorder">Bestellvorschläge <span class="count" id="reorder-count">0</span></div>
         </div>
       </nav>
     </div>
@@ -107,7 +108,8 @@
           <button class="btn-outline" data-act="new-protocol" data-show="list">Neu beginnen</button>
           <button class="btn-primary" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
           <button class="btn-primary" data-act="new-order" data-show="orders">+ Neuer Auftrag</button>
-          <button class="btn-w" data-act="print" data-show="list protocol fleet order orders">Drucken / PDF</button>
+          <button class="btn-primary" data-act="new-article" data-show="stock admin">+ Artikel</button>
+          <button class="btn-w" data-act="print" data-show="list protocol fleet order orders stock article reorder">Drucken / PDF</button>
           <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
         </div>
       </div>
@@ -197,6 +199,23 @@
 
       <!-- ── Ansicht: ein Werkstattauftrag ── -->
       <div id="view-order" class="hidden"></div>
+
+      <!-- ── Ansicht: Lager – Artikelliste ── -->
+      <div id="view-stock" class="hidden">
+        <div class="arch-tools no-print">
+          <input id="stock-search" type="search" placeholder="Suchen: Art.-Nr., Bezeichnung, Lieferant …" autocomplete="off">
+          <select id="stock-ort"><option value="">Alle Lagerorte</option></select>
+          <select id="stock-kat"><option value="">Alle Kategorien</option></select>
+        </div>
+        <div id="stock-summary"></div>
+        <div class="arch-list" id="stock-list"></div>
+      </div>
+
+      <!-- ── Ansicht: Lager – ein Artikel ── -->
+      <div id="view-article" class="hidden"></div>
+
+      <!-- ── Ansicht: Lager – Bestellvorschläge ── -->
+      <div id="view-reorder" class="hidden"></div>
 
       <!-- ── Ansicht: Fuhrpark ── -->
       <div id="view-fleet" class="hidden">

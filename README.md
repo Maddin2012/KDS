@@ -98,6 +98,21 @@ In der Serviceliste schlägt das Feld **ID / Fahrzeug** die Fahrzeuge vor;
 Kennzeichen und Werk-Nr. erscheinen darunter und im Ausdruck. Beim
 **Abschließen** wird beim Fahrzeug „letzter Service“ eingetragen.
 
+**Lager.** Seitenleiste → *Lager* → **Artikel**: alle Artikel mit Bestand und
+Ampel (grün OK · orange = am/unter Mindestbestand · rot = leer), Suche sowie Filter
+nach Lagerort und Kategorie, oben der gesamte Lagerwert. Einen Artikel antippen:
+- **Buchen** (alle): Menge und Grund/Auftrags-Nr. eintragen → **+ Zulauf** oder
+  **− Entnahme**. Mehr entnehmen als da ist geht nicht. Jede Buchung steht mit
+  Datum und Kürzel in der **Historie**. Buchen braucht Internet, damit zwei
+  Geräte nicht gleichzeitig denselben Bestand verbuchen.
+- **Stammdaten, Lieferanten, Bemerkungen** ändern sowie **Inventur**
+  (gezählten Bestand festlegen) und Löschen: nur Admins. Neue Kategorien und
+  Lagerorte legen Admins direkt in der Auswahl an („+ Neue …“).
+
+**Bestellvorschläge.** *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
+dem Mindestbestand mit empfohlener Menge (auffüllen auf das Doppelte des
+Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.
+
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
 

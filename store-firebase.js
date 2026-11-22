@@ -304,6 +304,58 @@ export function createCloudStore(cfg) {
       return Promise.resolve(ref.id);
     },
 
+    /* ---------- Lager ---------- */
+    onArticles(cb, onErr) {
+      return onSnapshot(sub('artikel'), { includeMetadataChanges: true }, (qs) => {
+        const list = [];
+        qs.forEach(d => list.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites }));
+        cb(list);
+      }, (err) => { console.error(err); if (err && err.code !== 'permission-denied') setError('Verbindung zur Datenbank gestört'); if (onErr) onErr(err); });
+    },
+    newArticleId() { return doc(sub('artikel')).id; },
+    /* Stammdaten (nur Admins) – der Bestand ändert sich ausschließlich über Buchungen */
+    saveArticle(id, data, by, isNew) {
+      const ref = doc(db, 'workshops', wid, 'artikel', id);
+      const d = { ...data, updatedBy: by || '', updatedAt: serverTimestamp() };
+      if (isNew) d.bestand = 0;
+      return track(setDoc(ref, d, { merge: !isNew }));
+    },
+    async deleteArticle(id) {
+      if (!navigator.onLine) throw new Error('Zum Löschen wird Internet gebraucht.');
+      const qs = await getDocs(collection(db, 'workshops', wid, 'artikel', id, 'buchungen'));
+      const b = writeBatch(db);
+      qs.forEach(d => b.delete(d.ref));
+      b.delete(doc(db, 'workshops', wid, 'artikel', id));
+      return track(b.commit());
+    },
+    /* Buchung: Bestand + Historie in EINER Transaktion (kein Überschreiben bei gleichzeitigem Buchen) */
+    async book(aid, { typ, menge, grund }, by) {
+      if (!navigator.onLine) throw new Error('Zum Buchen wird Internet gebraucht.');
+      const aref = doc(db, 'workshops', wid, 'artikel', aid);
+      const bref = doc(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'));
+      return withTimeout(runTransaction(db, async (tx) => {
+        const s = await tx.get(aref);
+        if (!s.exists()) throw new Error('Artikel nicht gefunden.');
+        const cur = Number(s.data().bestand) || 0;
+        let neu;
+        if (typ === 'Zulauf') neu = cur + menge;
+        else if (typ === 'Entnahme') { if (menge > cur) throw Object.assign(new Error('Zu wenig Bestand.'), { code: 'zu-wenig', bestand: cur }); neu = cur - menge; }
+        else neu = menge;   // Korrektur: neuer Bestand
+        tx.update(aref, { bestand: neu, bestandAt: serverTimestamp(), bestandVon: by || '', lastBooking: bref.id });
+        tx.set(bref, { typ, menge: typ === 'Korrektur' ? neu - cur : menge, grund: grund || '', ts: Date.now(),
+          bestandVorher: cur, bestandNachher: neu, von: by || '' });
+        return neu;
+      }), 15000, 'Keine Verbindung zur Datenbank.');
+    },
+    onBookings(aid, cb) {
+      const q = query(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'), orderBy('ts', 'desc'), limit(100));
+      return onSnapshot(q, (qs) => { const l = []; qs.forEach(d => l.push({ ...d.data(), id: d.id })); cb(l); }, (err) => console.error(err));
+    },
+    onLagerCfg(cb) {
+      return onSnapshot(doc(db, 'workshops', wid, 'einstellungen', 'lager'), (d) => cb(d.exists() ? d.data() : {}), (err) => console.error(err));
+    },
+    saveLagerCfg(data) { return track(setDoc(doc(db, 'workshops', wid, 'einstellungen', 'lager'), data, { merge: true })); },
+
     /* ---------- Werkstattaufträge ---------- */
     onOrders(cb, onErr) {
       const q = query(sub('auftraege'), orderBy('created', 'desc'), limit(500));
