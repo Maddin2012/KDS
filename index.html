@@ -44,13 +44,18 @@
     </div>
 
     <nav class="side-nav" id="nav-cats">
-      <div class="nav-title">Kategorien</div>
+      <div class="nav-title">Serviceliste</div>
       <!-- per Script -->
     </nav>
 
     <nav class="side-nav">
       <div class="nav-title">Ablage</div>
       <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
+    </nav>
+
+    <nav class="side-nav">
+      <div class="nav-title">Werkstatt</div>
+      <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
     </nav>
 
     <div class="side-foot">
@@ -81,7 +86,8 @@
           <!-- Liste -->
           <button class="btn-outline" data-act="edit-template" data-show="list admin">Vorlage bearbeiten</button>
           <button class="btn-outline" data-act="new-protocol" data-show="list">Neu beginnen</button>
-          <button class="btn-w" data-act="print" data-show="list protocol">Drucken / PDF</button>
+          <button class="btn-primary" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
+          <button class="btn-w" data-act="print" data-show="list protocol fleet">Drucken / PDF</button>
           <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
         </div>
       </div>
@@ -89,7 +95,9 @@
       <div class="cards" id="cards">
         <div class="card">
           <label for="fId">ID / Fahrzeug</label>
-          <input id="fId" placeholder="z. B. MK 88" autocomplete="off">
+          <input id="fId" placeholder="z. B. MK 88" autocomplete="off" list="veh-list">
+          <datalist id="veh-list"></datalist>
+          <span class="u" id="veh-info"></span>
         </div>
         <div class="card">
           <label for="fKm">Km. Stand</label>
@@ -150,6 +158,15 @@
           <select id="arch-cat"><option value="">Alle Kategorien</option></select>
         </div>
         <div class="arch-list" id="arch-list"></div>
+      </div>
+
+      <!-- ── Ansicht: Fuhrpark ── -->
+      <div id="view-fleet" class="hidden">
+        <div class="arch-tools no-print">
+          <input id="fleet-search" type="search" placeholder="Suchen: ID, Fahrzeug, Kennzeichen, Werk-Nr. …" autocomplete="off">
+        </div>
+        <div id="fleet-summary"></div>
+        <div id="fleet-list"></div>
       </div>
 
       <!-- ── Ansicht: abgeschlossenes Protokoll ── -->

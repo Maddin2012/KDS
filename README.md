@@ -74,6 +74,16 @@ Ein Gerät bleibt angemeldet, bis es ein anderes Kürzel wählt.
 > Kombinationen durchprobiert, schützt sie nicht vollständig – längere PINs
 > (bis 12 Ziffern) sind möglich.
 
+**Fuhrpark.** Seitenleiste → *Werkstatt* → **Fuhrpark**: alle Fahrzeuge mit
+ID, Typ, Kennzeichen, Werk-Nr., Baujahr, FIN, **UVV/HU/SP fällig am** und
+**letzter Service**. Fälligkeiten sind markiert (rot = überfällig, gelb = innerhalb
+von 30 Tagen). Fahrzeuge anlegen/ändern/löschen nur Admins; alle können ansehen.
+Die alte Fahrzeugliste lässt sich über ⚙ → „Daten aus alter Version übernehmen“
+einlesen (nur neue Fahrzeuge werden angelegt).
+In der Serviceliste schlägt das Feld **ID / Fahrzeug** die Fahrzeuge vor;
+Kennzeichen und Werk-Nr. erscheinen darunter und im Ausdruck. Beim
+**Abschließen** wird beim Fahrzeug „letzter Service“ eingetragen.
+
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
 
@@ -163,6 +173,21 @@ Kennung fürs Gerät, an der Firebase erkennt, ob es zur Werkstatt gehört.
 
 Im Repository unter *Settings* → *Secrets and variables* → *Actions* →
 **New repository secret** die vier Werte aus Schritt 2 anlegen.
+
+### 6b. Optional: Regeln automatisch einspielen
+
+Statt die Regeln nach jeder Änderung von Hand einzufügen, kann GitHub sie bei
+jedem Veröffentlichen mit einspielen:
+
+1. Firebase-Konsole → Zahnrad → **Projekteinstellungen** → Reiter
+   **Dienstkonten** → **Neuen privaten Schlüssel generieren** → JSON-Datei wird
+   heruntergeladen.
+2. GitHub → *Settings* → *Secrets and variables* → *Actions* → **New repository
+   secret**: Name `FB_SERVICE_ACCOUNT`, Wert = **gesamter Inhalt** der JSON-Datei.
+3. Die JSON-Datei danach vom Computer löschen – sie ist ein Generalschlüssel für
+   das Firebase-Projekt.
+
+Ohne dieses Secret läuft alles wie bisher (Regeln von Hand, Schritt 5).
 
 ### 7. Veröffentlichen
 

@@ -32,7 +32,7 @@ jobs:
           FB_APP_ID: ${{ secrets.FB_APP_ID }}
         run: |
           mkdir -p dist
-          rsync -a --exclude '.git' --exclude '.github' --exclude 'dist' --exclude 'README.md' --exclude 'firestore.rules' --exclude 'tests' --exclude '.gitignore' ./ dist/
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'dist' --exclude 'README.md' --exclude 'firestore.rules' --exclude 'tests' --exclude '.gitignore' --exclude 'firebase.json' ./ dist/
           if [ -n "$FB_API_KEY" ] && [ -n "$FB_PROJECT_ID" ]; then
             node -e '
               // Beim Kopieren aus firebaseConfig rutschen oft Anführungszeichen,
@@ -76,8 +76,35 @@ jobs:
         with:
           path: dist
 
+  # Firebase-Sicherheitsregeln automatisch einspielen – nur wenn das Secret
+  # FB_SERVICE_ACCOUNT (Dienstkonto-Schlüssel als JSON) hinterlegt ist.
+  # Schlägt das Einspielen fehl, wird auch die App nicht veröffentlicht,
+  # damit App und Regeln nie auseinanderlaufen.
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Firestore-Regeln einspielen
+        env:
+          FB_SERVICE_ACCOUNT: ${{ secrets.FB_SERVICE_ACCOUNT }}
+          FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
+        run: |
+          if [ -z "$FB_SERVICE_ACCOUNT" ]; then
+            echo "::warning::Secret FB_SERVICE_ACCOUNT fehlt – Firestore-Regeln bitte von Hand in der Firebase-Konsole einfügen."
+            exit 0
+          fi
+          printf '%s' "$FB_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          PID=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.project_id||"")' "$RUNNER_TEMP/sa.json")
+          PID=${PID:-$FB_PROJECT_ID}
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx --yes firebase-tools@14.27.0 deploy --only firestore:rules --project "$PID" --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"
+
   deploy:
-    needs: build
+    needs: [build, rules]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

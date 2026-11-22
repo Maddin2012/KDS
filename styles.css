@@ -620,3 +620,47 @@
   .setup-card a { color:var(--orange-dk); font-weight:600 }
   html[data-theme="dark"] .setup-card a { color:var(--orange) }
   .ws-inline { font-family:'IBM Plex Mono',monospace; letter-spacing:.04em; white-space:nowrap }
+
+  /* =====================================================================
+     Fuhrpark
+     ===================================================================== */
+  .fleet-summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px }
+  .fleet-table { width:100%; border-collapse:separate; border-spacing:0; background:var(--surface); border-radius:8px;
+    box-shadow:0 1px 3px rgba(17,18,19,.07); overflow:hidden }
+  .fleet-table th { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.08em; font-size:12px;
+    color:var(--steel); text-align:left; padding:10px 10px; border-bottom:1px solid var(--line); background:var(--surface) }
+  .fleet-table td { padding:10px; border-bottom:1px solid var(--line-2); font-size:14px; vertical-align:middle }
+  .fleet-table tr:last-child td { border-bottom:0 }
+  .fleet-row { cursor:pointer }
+  .fleet-row:hover td, .fleet-row:focus td { background:var(--hover) }
+  .fleet-row:focus { outline:none }
+  .mono { font-family:'IBM Plex Mono',monospace; font-size:13px }
+  .due { font-family:'IBM Plex Mono',monospace; font-size:13px; padding:2px 7px; border-radius:4px; white-space:nowrap }
+  .due.over { background:#fdecea; color:#b42318; font-weight:600 }
+  .due.soon { background:var(--orange-lt); color:var(--orange-dk); font-weight:600 }
+  .fleet-legend { font-size:12px; color:var(--steel); margin-top:10px }
+  .veh-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 12px }
+  .veh-card { max-width:560px }
+  .field input:disabled { background:var(--line-2); color:var(--text) }
+  #veh-info { display:block; min-height:14px }
+  @media (max-width:760px) {
+    .fleet-table, .fleet-table tbody, .fleet-table tr, .fleet-table td { display:block; width:100% }
+    .fleet-table thead { display:none }
+    .fleet-table { background:transparent; box-shadow:none }
+    .fleet-row { background:var(--surface); border-radius:8px; margin-bottom:8px; box-shadow:0 1px 3px rgba(17,18,19,.07);
+      display:grid !important; grid-template-columns:1fr 1fr; padding:8px 4px }
+    .fleet-table td { border:0; padding:4px 10px; display:flex; flex-direction:column; gap:1px }
+    .fleet-table td::before { content:attr(data-l); font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;
+      letter-spacing:.08em; font-size:10px; color:var(--steel); font-weight:700 }
+    .veh-grid { grid-template-columns:1fr }
+  }
+  @media screen {
+    html[data-theme="dark"] .due.over { background:#3d1c1a; color:#ff9a90 }
+    html[data-theme="dark"] .due.soon { background:#3b2a16; color:#ffb35c }
+  }
+  @media print {
+    .fleet-table { box-shadow:none; border:1px solid var(--line) }
+    .fleet-table td, .fleet-table th { padding:4px 6px; font-size:11px }
+    .due.over, .due.soon { background:transparent; text-decoration:underline }
+    #veh-info { font-size:10px }
+  }

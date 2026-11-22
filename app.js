@@ -5,7 +5,8 @@
 
 import {
   CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
-  emptyDraft, migrateOldData, storeFromMap, TEXT_FIX_VERSION, fixTemplateTexts
+  emptyDraft, migrateOldData, storeFromMap, TEXT_FIX_VERSION, fixTemplateTexts,
+  legacyFleet, VEHICLE_FIELDS, vehicleLabel
 } from './data.js';
 import { createLocalStore } from './store-local.js';
 
@@ -30,6 +31,7 @@ const S = {
   openId: null,
   renderDeferred: false,
   protoEdit: false,         // abgeschlossenes Protokoll wird von Admin bearbeitet
+  vehicles: [],             // Fuhrpark
   claim: null,              // Admin-Nachweis dieses Geräts (nur mit richtiger PIN)
   pinFlags: {}              // für welche Admin-Kürzel eine PIN festgelegt ist
 };
@@ -102,8 +104,10 @@ function renderNav() {
     el.dataset.cat = cat;
     nav.appendChild(el);
   });
-  $('nav-archive').classList.toggle('active', S.view !== 'list');
+  $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
+  $('nav-fleet').classList.toggle('active', S.view === 'fleet');
   $('arch-count').textContent = S.protocols.length;
+  $('fleet-count').textContent = S.vehicles.length;
 
   const meBtn = $('btn-me');
   meBtn.innerHTML = S.me ? esc(monteurLabel(S.me)) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
@@ -121,18 +125,20 @@ function renderChrome() {
 
   let title;
   if (mode === 'archive') title = 'Archiv';
+  else if (mode === 'fleet') title = 'Fuhrpark';
   else if (mode === 'protocol' || mode === 'protoedit') {
     const p = S.protocols.find(x => x.id === S.openId);
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
-  $('sidebar-sub').textContent = mode === 'archive' || mode === 'protocol' ? 'Archiv' : 'Serviceliste ' + S.cat;
-  document.title = (mode === 'archive' ? 'Archiv' : title) + ' · Krandienst Schulz';
+  $('sidebar-sub').textContent = mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  document.title = title + ' · Krandienst Schulz';
 
   $('view-list').classList.toggle('hidden', S.view !== 'list');
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
-  $('cards').classList.toggle('hidden', mode === 'archive' || mode === 'edit');
+  $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
+  $('cards').classList.toggle('hidden', mode === 'archive' || mode === 'edit' || mode === 'fleet');
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
@@ -189,7 +195,165 @@ function renderFill() {
 function applyHeader(h) {
   HEADER_FIELDS.forEach(id => { $(id).value = (h && h[id]) || ''; });
   markEmptyDate();
+  renderVehInfo(h || {});
 }
+
+/* Kennzeichen / Werk-Nr. unter „ID / Fahrzeug“ (aus dem Fuhrpark oder im Protokoll gespeichert) */
+function renderVehInfo(h) {
+  const parts = [h.kz, h.werk ? 'Werk-Nr. ' + h.werk : ''].filter(Boolean);
+  $('veh-info').textContent = parts.join(' · ');
+}
+function fillVehicleList() {
+  $('veh-list').innerHTML = sortVehicles(S.vehicles).map(v =>
+    `<option value="${esc(vehicleLabel(v))}">${esc([v.kz, v.werk].filter(Boolean).join(' · '))}</option>`).join('');
+}
+/* Eingabe im Feld „ID / Fahrzeug“ mit dem Fuhrpark abgleichen */
+function matchVehicle(value) {
+  const val = String(value || '').trim().toLowerCase();
+  if (!val) return null;
+  return S.vehicles.find(v => vehicleLabel(v).toLowerCase() === val)
+    || S.vehicles.find(v => v.code && v.code.toLowerCase() === val)
+    || S.vehicles.find(v => v.kz && v.kz.toLowerCase() === val) || null;
+}
+function syncHeaderVehicle() {
+  const v = matchVehicle(draft.header.fId);
+  if (v) { draft.header.vehId = v.id; draft.header.kz = v.kz || ''; draft.header.werk = v.werk || ''; draft.header.typ = v.typ || ''; }
+  else { delete draft.header.vehId; delete draft.header.kz; delete draft.header.werk; delete draft.header.typ; }
+  renderVehInfo(draft.header);
+}
+
+/* =====================================================================
+   Fuhrpark
+   ===================================================================== */
+/* Fahrzeuge aus einer Liste, die es im Fuhrpark noch nicht gibt (gleiche Werk-Nr. bzw. gleicher Code + Typ) */
+function newVehicles(list) {
+  const norm = (x) => String(x || '').replace(/\s+/g, '').toLowerCase();
+  return list.filter(v => !S.vehicles.some(x =>
+    (v.werk && norm(x.werk) === norm(v.werk)) || (norm(x.code) === norm(v.code) && norm(x.typ) === norm(v.typ))));
+}
+const sortVehicles = (list) => list.slice().sort((a, b) =>
+  String(a.code || a.typ || '').localeCompare(String(b.code || b.typ || ''), 'de', { numeric: true }));
+const fmtDay = (iso) => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}.${m}.${y}`;
+};
+/* Fälligkeit: over = überfällig, soon = innerhalb 30 Tagen, ok, '' = kein Datum */
+function dueState(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  const today = new Date(todayIso() + 'T00:00:00');
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+  const days = Math.round((d - today) / 86400000);
+  return days < 0 ? 'over' : days <= 30 ? 'soon' : 'ok';
+}
+const DUE_FIELDS = [['uvv', 'UVV'], ['hu', 'HU'], ['sp', 'SP']];
+
+function renderFleet() {
+  const q = $('fleet-search').value.trim().toLowerCase();
+  const list = sortVehicles(S.vehicles).filter(v => !q ||
+    [v.code, v.typ, v.kz, v.werk, v.fin, v.baujahr].join(' ').toLowerCase().includes(q));
+  let over = 0, soon = 0;
+  S.vehicles.forEach(v => DUE_FIELDS.forEach(([f]) => { const st = dueState(v[f]); if (st === 'over') over++; if (st === 'soon') soon++; }));
+  $('fleet-summary').innerHTML = S.vehicles.length ? `<div class="fleet-summary">
+      ${over ? `<span class="badge bad">${over} überfällig</span>` : ''}
+      ${soon ? `<span class="badge pend">${soon} in den nächsten 30 Tagen fällig</span>` : ''}
+      ${!over && !soon ? '<span class="badge ok">Keine Fälligkeiten in den nächsten 30 Tagen</span>' : ''}
+    </div>` : '';
+  if (S.fleetError) {
+    $('fleet-list').innerHTML = `<div class="empty-note">${S.fleetError === 'rules'
+      ? '<b>Fuhrpark noch nicht freigeschaltet.</b><br>Die Firebase-Regeln müssen aktualisiert werden (Firebase-Konsole → Firestore → Regeln → Inhalt von firestore.rules einfügen → Veröffentlichen).'
+      : 'Der Fuhrpark konnte nicht geladen werden. Bitte später erneut versuchen.'}</div>`;
+    return;
+  }
+  if (!S.vehicles.length) {
+    $('fleet-list').innerHTML = `<div class="empty-note">Noch keine Fahrzeuge im Fuhrpark.<br>${amAdmin()
+      ? 'Über „+ Fahrzeug“ anlegen oder unter ⚙ Einstellungen → „Daten aus alter Version übernehmen“ die alte Fahrzeugliste einlesen.'
+      : 'Fahrzeuge legen die Admins (SE, KÖ) an.'}</div>`;
+    return;
+  }
+  if (!list.length) { $('fleet-list').innerHTML = '<div class="empty-note">Kein Fahrzeug zu dieser Suche.</div>'; return; }
+  const due = (v, f) => { const st = dueState(v[f]); return `<span class="due ${st}">${esc(fmtDay(v[f]) || '—')}</span>`; };
+  $('fleet-list').innerHTML = `
+    <table class="fleet-table">
+      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th>UVV</th><th>HU</th><th>SP</th><th>Letzter Service</th></tr></thead>
+      <tbody>${list.map(v => `
+        <tr class="fleet-row" data-vid="${esc(v.id)}" tabindex="0">
+          <td data-l="ID" class="mono"><b>${esc(v.code || '—')}</b></td>
+          <td data-l="Fahrzeug"><b>${esc(v.typ || '—')}</b>${v._pending ? ' <span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</td>
+          <td data-l="Kennzeichen" class="mono">${esc(v.kz || '—')}</td>
+          <td data-l="Werk-Nr." class="mono">${esc(v.werk || '—')}</td>
+          <td data-l="UVV fällig">${due(v, 'uvv')}</td>
+          <td data-l="HU fällig">${due(v, 'hu')}</td>
+          <td data-l="SP fällig">${due(v, 'sp')}</td>
+          <td data-l="Letzter Service">${esc(fmtDay(v.letzterService) || '—')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Fahrzeug antippen für Details${amAdmin() ? ' und zum Bearbeiten' : ''}.</p>`;
+}
+
+/* Fahrzeug anzeigen / bearbeiten (bearbeiten nur Admins) */
+function openVehicle(id) {
+  const v = id ? S.vehicles.find(x => x.id === id) : {};
+  if (id && !v) return;
+  const admin = amAdmin();
+  const ov = $('setup');
+  const field = (f, label, type = 'text', ph = '') => `<div class="field"><label for="vf-${f}">${label}</label>
+    <input id="vf-${f}" type="${type}" value="${esc(v[f] || '')}" placeholder="${esc(ph)}" ${admin ? '' : 'disabled'} autocomplete="off"></div>`;
+  ov.innerHTML = `<div class="setup-card veh-card">${cardHead}
+    <h3>${id ? esc(vehicleLabel(v) || 'Fahrzeug') : 'Neues Fahrzeug'}</h3>
+    ${admin ? '' : '<p>Nur Admins (SE, KÖ) können Fahrzeuge ändern.</p>'}
+    <form id="veh-form" novalidate>
+      <div class="veh-grid">
+        ${field('code', 'ID (Kurzcode)', 'text', 'z. B. 088')}
+        ${field('typ', 'Fahrzeug / Typ *', 'text', 'z. B. MK 88 Plus')}
+        ${field('kz', 'Kennzeichen', 'text', 'z. B. OD-KS 088')}
+        ${field('werk', 'Werk-Nr.', 'text', 'z. B. 110 128')}
+        ${field('baujahr', 'Baujahr', 'text', 'z. B. 2021')}
+        ${field('fin', 'Fahrgestellnr. (FIN)')}
+        ${field('uvv', 'UVV fällig am', 'date')}
+        ${field('hu', 'HU fällig am', 'date')}
+        ${field('sp', 'SP fällig am', 'date')}
+        ${field('letzterService', 'Letzter Service', 'date')}
+      </div>
+      ${v.letzterServiceVon ? `<p style="font-size:12px;margin-top:-4px">Letzter Service eingetragen von ${esc(monteurLabel(v.letzterServiceVon))}.</p>` : ''}
+      ${admin ? '<button class="btn-big" type="submit">Speichern</button>' : ''}
+      <div class="setup-err" id="veh-err"></div>
+    </form>
+    <div class="setup-back" style="display:flex;justify-content:space-between;gap:10px">
+      ${admin && id ? '<button class="link-btn" data-v="delete" type="button" style="color:#c53030">Fahrzeug löschen</button>' : '<span></span>'}
+      <button class="link-btn" data-v="close" type="button">${admin ? 'Abbrechen' : 'Schließen'}</button>
+    </div>
+  </div>`;
+  ov.classList.remove('hidden');
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; };
+  if (admin) setTimeout(() => $(id ? 'vf-kz' : 'vf-code').focus(), 30);
+  ov.onclick = async (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    if (b.dataset.v === 'close') { close(); return; }
+    if (b.dataset.v === 'delete') {
+      if (!(await confirmModal(`Fahrzeug „${vehicleLabel(v)}“ aus dem Fuhrpark löschen? Abgeschlossene Protokolle bleiben erhalten.`, 'Löschen'))) return;
+      try { await S.store.deleteVehicle(id); close(); showToast('Fahrzeug gelöscht'); }
+      catch (err) { if (err && err.code === 'permission-denied') { close(); adminRejected(); } else showToast('Löschen fehlgeschlagen'); }
+    }
+  };
+  ov.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!amAdmin()) return;
+    const data = {};
+    VEHICLE_FIELDS.forEach(f => { data[f] = $('vf-' + f).value.trim(); });
+    if (!data.typ) { $('veh-err').textContent = 'Bitte „Fahrzeug / Typ“ eintragen.'; $('vf-typ').focus(); return; }
+    const dup = S.vehicles.find(x => x.id !== id && ((data.code && x.code === data.code) || (data.kz && x.kz === data.kz)));
+    if (dup && !(await confirmModal(`Es gibt schon „${vehicleLabel(dup)}“ mit derselben ID oder demselben Kennzeichen. Trotzdem speichern?`, 'Speichern', false))) return;
+    if (v.letzterServiceVon && data.letzterService === v.letzterService) data.letzterServiceVon = v.letzterServiceVon;
+    try {
+      await S.store.saveVehicle(id || null, data, S.me);
+      close();
+      showToast(id ? 'Fahrzeug gespeichert' : 'Fahrzeug angelegt');
+    } catch (err) { if (err && err.code === 'permission-denied') { close(); adminRejected(); } else $('veh-err').textContent = 'Speichern fehlgeschlagen.'; }
+  };
+}
+
 function markEmptyDate() { $('fDate').classList.toggle('is-empty', !$('fDate').value); }
 
 /* ---------- Monteure (Mehrfachauswahl) ---------- */
@@ -304,6 +468,7 @@ function render() {
     else { renderFill(); applyHeader(draft.header); renderMonteure(); }
   } else if (S.view === 'archive') renderArchive();
   else if (S.view === 'protocol') renderProtocol();
+  else if (S.view === 'fleet') renderFleet();
   renderChrome();
 }
 
@@ -371,6 +536,10 @@ async function closeProtocol() {
     showToast('Speichern fehlgeschlagen – Protokoll bleibt erhalten');
     return;
   }
+  // Beim Fahrzeug im Fuhrpark „letzter Service“ eintragen (nur wenn neuer als der bisherige)
+  const veh = p.header.vehId && S.vehicles.find(x => x.id === p.header.vehId);
+  const day = (p.header.fDate && /^\d{4}-\d{2}-\d{2}$/.test(p.header.fDate)) ? p.header.fDate : todayIso();
+  if (veh && (!veh.letzterService || day > veh.letzterService)) S.store.setLastService(veh.id, day, S.me).catch(() => {});
   draft = emptyDraft();
   saveDraft();
   render();
@@ -393,7 +562,7 @@ function renderArchive() {
     .filter(p => {
       if (!q) return true;
       const hay = [
-        p.header && p.header.fId, p.category, p.closedBy, monteurLabel(p.closedBy),
+        p.header && p.header.fId, p.header && p.header.kz, p.header && p.header.werk, p.category, p.closedBy, monteurLabel(p.closedBy),
         ...(p.monteure || []).map(monteurLabel),
         ...(p.groups || []).flatMap(g => [g.title, ...g.items.flatMap(i => [i.text, i.note])])
       ].join(' ').toLowerCase();
@@ -699,18 +868,27 @@ function openSettings() {
             <input id="imp-file" type="file" accept=".json,application/json"></div>
           ${ctx.fileName && m ? `<p style="margin:0 0 8px;font-size:13px">Eingelesen: <b>${esc(ctx.fileName)}</b></p>` : ''}
           ${ctx.err ? `<div class="setup-err">${esc(ctx.err)}</div>` : ''}
-          ${m ? (cats.length ? `
-            <p style="margin:6px 0">Gefunden – Haken setzen, welche Vorlagen <b>für alle Geräte ersetzt</b> werden:</p>
+          ${m ? `
+            ${cats.length ? `
+            <p style="margin:6px 0"><b>Vorlagen</b> – Haken setzen, welche <b>für alle Geräte ersetzt</b> werden
+            (vorausgewählt nur, wo die Werkstatt noch die eingebaute Standardliste nutzt):</p>
             <div class="set-list" style="margin-bottom:10px">
               ${cats.map(c => { const a = count(m.templates[c]), b = count(tplFor(c)); return `
-                <label class="set-btn" style="cursor:pointer"><span><input type="checkbox" class="imp-cat" value="${esc(c)}" checked style="margin-right:8px">${esc(c)}</span>
+                <label class="set-btn" style="cursor:pointer"><span><input type="checkbox" class="imp-cat" value="${esc(c)}" ${S.templates[c] ? '' : 'checked'} style="margin-right:8px">${esc(c)}</span>
                 <small>alt: ${a.g} Gruppen / ${a.i} Punkte · jetzt: ${b.g} / ${b.i}</small></label>`; }).join('')}
             </div>
             <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin-bottom:12px">
-              <input type="checkbox" id="imp-drafts" checked style="margin-top:3px">
+              <input type="checkbox" id="imp-drafts" style="margin-top:3px">
               <span>Auch die damals <b>laufenden Eingaben</b> (Fahrzeug, Haken, Bemerkungen, Monteure) auf <b>dieses Gerät</b> übernehmen – ersetzt die aktuelle, noch nicht abgeschlossene Liste der gewählten Kategorien.</span>
-            </label>
-            <button class="btn-big" type="submit">Übernehmen</button>` : '<div class="setup-err">In der Datei sind keine Listen der alten Serviceliste enthalten.</div>') : ''}
+            </label>` : ''}
+            ${m.fleet && m.fleet.length ? `
+            <p style="margin:6px 0"><b>Fuhrpark</b> – vorhandene Fahrzeuge bleiben unverändert, nur neue werden angelegt:</p>
+            <div class="set-list" style="margin-bottom:12px">
+              <label class="set-btn" style="cursor:pointer"><span><input type="checkbox" id="imp-fleet" ${newVehicles(m.fleet).length ? 'checked' : ''} style="margin-right:8px">Fahrzeuge übernehmen</span>
+              <small>${m.fleet.length} in der Datei · ${newVehicles(m.fleet).length} neu</small></label>
+            </div>` : ''}
+            ${cats.length || (m.fleet && m.fleet.length) ? '<button class="btn-big" type="submit">Übernehmen</button>'
+              : '<div class="setup-err">In der Datei sind weder Listen noch Fahrzeuge der alten Version enthalten.</div>'}` : ''}
           <div class="setup-err" id="set-err"></div>
         </form>${back}`;
     }
@@ -786,6 +964,7 @@ function openSettings() {
       const map = {};
       Object.entries(data.keys).forEach(([k, v]) => { if (typeof v === 'string') map[k] = v; });
       ctx.mig = migrateOldData(storeFromMap(map));
+      ctx.mig.fleet = legacyFleet(storeFromMap(map));
     } catch (ex) {
       ctx.err = ex instanceof SyntaxError ? 'Die Datei konnte nicht gelesen werden (kein gültiges JSON).' : (ex.message || 'Die Datei konnte nicht gelesen werden.');
     }
@@ -818,10 +997,12 @@ function openSettings() {
     const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
     const cats = Array.from(ov.querySelectorAll('.imp-cat:checked')).map(c => c.value);
     const withDrafts = $('imp-drafts') && $('imp-drafts').checked;
-    if (!cats.length) { err.textContent = 'Bitte mindestens eine Kategorie anhaken.'; return; }
+    const fleetNew = ($('imp-fleet') && $('imp-fleet').checked) ? newVehicles(ctx.mig.fleet || []) : [];
+    if (!cats.length && !fleetNew.length) { err.textContent = 'Bitte etwas zum Übernehmen anhaken (oder es gibt keine neuen Fahrzeuge).'; return; }
     if (!amAdmin()) { err.textContent = 'Bitte zuerst als Admin anmelden.'; return; }
     if (S.store.mode === 'cloud' && !navigator.onLine) { err.textContent = 'Zum Übernehmen wird Internet gebraucht.'; return; }
-    if (!(await confirmModal(`Vorlagen ${cats.join(', ')} für alle Geräte durch die alten Listen ersetzen?`, 'Ersetzen'))) return;
+    const what = [cats.length ? `Vorlagen ${cats.join(', ')} für alle Geräte ersetzen` : '', fleetNew.length ? `${fleetNew.length} Fahrzeuge in den Fuhrpark übernehmen` : ''].filter(Boolean).join(' und ');
+    if (!(await confirmModal(what.charAt(0).toUpperCase() + what.slice(1) + '?', 'Übernehmen', !!cats.length))) return;
     btn.disabled = true; err.textContent = 'Wird übernommen …';
     try {
       flushTemplateSave();
@@ -831,10 +1012,11 @@ function openSettings() {
         S.templates[c] = { ...tpl, updatedBy: S.me };
         if (withDrafts && ctx.mig.drafts[c]) lsSet(draftKey(c), JSON.stringify(ctx.mig.drafts[c]));
       }
+      for (const v of fleetNew) await S.store.saveVehicleNow(null, v, S.me);
       draft = loadDraft(S.cat);
       if (S.edit) { S.edit = false; S.editTpl = null; }
       render();
-      showToast('Übernommen: ' + cats.join(', '));
+      showToast('Übernommen: ' + [...cats, fleetNew.length ? fleetNew.length + ' Fahrzeuge' : ''].filter(Boolean).join(', '));
       screen = 'main'; ctx = {}; draw();
     } catch (ex) {
       console.error(ex);
@@ -1231,6 +1413,7 @@ const actions = {
     updatePasteButton();
     showToast(`„${title}“ kopiert – in einer anderen Kategorie einfügbar`);
   },
+  'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
   'back-archive': () => { S.view = 'archive'; S.openId = null; S.protoEdit = false; render(); },
   'edit-protocol': () => { if (!amAdmin()) return; S.protoEdit = true; render(); },
   'save-protocol': saveProtocolEdit,
@@ -1253,9 +1436,12 @@ document.addEventListener('click', (e) => {
     if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'fleet') { flushTemplateSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
     if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
     return;
   }
+  const vrow = e.target.closest('.fleet-row');
+  if (vrow) { openVehicle(vrow.dataset.vid); return; }
   const row = e.target.closest('.arch-row');
   if (row) { S.openId = row.dataset.pid; S.view = 'protocol'; render(); window.scrollTo(0, 0); return; }
 
@@ -1273,6 +1459,7 @@ $('btn-me').addEventListener('click', () => pickMe(true));
 $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
+$('fleet-search').addEventListener('input', renderFleet);
 
 /* Status-Logik i.O. / n.i.O. / behoben
    i.O. schließt n.i.O. und behoben aus; behoben setzt n.i.O.; n.i.O. abwählen nimmt behoben weg. */
@@ -1318,7 +1505,9 @@ document.addEventListener('input', (e) => {
   const t = e.target;
   if (HEADER_FIELDS.includes(t.id)) {
     if (S.view !== 'list') return;
-    draft.header[t.id] = t.value; saveDraft();
+    draft.header[t.id] = t.value;
+    if (t.id === 'fId') syncHeaderVehicle();
+    saveDraft();
     if (t.id === 'fDate') markEmptyDate();
     return;
   }
@@ -1424,6 +1613,17 @@ async function start() {
     const a = document.activeElement;
     if (a && a.isContentEditable && $('groups-container').contains(a)) { S.renderDeferred = true; return; }
     renderFill();
+  });
+  S.store.onVehicles((list) => {
+    S.fleetError = false;
+    S.vehicles = list;
+    fillVehicleList();
+    $('fleet-count').textContent = list.length;
+    if (S.view === 'fleet' && $('setup').classList.contains('hidden')) renderFleet();
+    if (S.view === 'list' && !S.edit && draft.header.fId && !draft.header.vehId) { syncHeaderVehicle(); saveDraft(); }
+  }, (err) => {
+    S.fleetError = err && err.code === 'permission-denied' ? 'rules' : 'other';
+    if (S.view === 'fleet') renderFleet();
   });
   S.store.onProtocols((list) => {
     S.protocols = list;

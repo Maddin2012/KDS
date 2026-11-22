@@ -144,6 +144,17 @@ service cloud.firestore {
         allow write: if isAdmin(wid);
       }
 
+      // Fuhrpark: lesen alle Mitglieder, anlegen/ändern/löschen nur Admins.
+      // „Letzter Service“ darf jedes Mitglied setzen (beim Abschluss einer Serviceliste).
+      match /fahrzeuge/{vid} {
+        allow read: if isMember(wid);
+        allow create, delete: if isAdmin(wid);
+        allow update: if isAdmin(wid)
+          || (isMember(wid)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['letzterService', 'letzterServiceVon'])
+              && request.resource.data.letzterService is string);
+      }
+
       // Abgeschlossene Protokolle: anlegen und lesen alle Mitglieder.
       // Nachträglich bearbeiten und löschen nur Admins (mit PIN). Beim Bearbeiten
       // bleiben Kategorie, „abgeschlossen von“ und Abschlusszeit unveränderlich.

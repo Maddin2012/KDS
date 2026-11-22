@@ -110,6 +110,28 @@ await t('Admin KÖ setzt PIN von SE zurück (anderer Admin)', assertSucceeds(set
 await t('Admin KÖ erstellt neuen Code für SE', assertSucceeds(setDoc(doc(koR, 'workshops', W3, 'recoveries', 'SE'), { hash: recHash(W3, 'SE', 'KOCODE') })));
 await t('Nicht-Admin kann keine PIN ohne Code setzen', assertFails(setDoc(doc(peR, 'workshops', W3, 'pins', 'SE'), { hash: pinHash(W3, 'SE', '5555') })));
 
+// ---------- Fuhrpark ----------
+const W4 = 'FUHRPARKWERKST04';
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  await setDoc(doc(db, 'workshops', W4), { name: 'F', members: { se: true, pe: true } });
+  await setDoc(doc(db, 'workshops', W4, 'pins', 'SE'), { hash: pinHash(W4, 'SE', '1111') });
+  await setDoc(doc(db, 'workshops', W4, 'adminClaims', 'se'), { monteur: 'SE', hash: pinHash(W4, 'SE', '1111') });
+  await setDoc(doc(db, 'workshops', W4, 'fahrzeuge', 'v1'), { code: '088', typ: 'MK 88 Plus', kz: 'OD-KS 088', letzterService: '' });
+});
+const seF = env.authenticatedContext('se').firestore(), peF = env.authenticatedContext('pe').firestore(), frF = env.authenticatedContext('fremd').firestore();
+const vRef = (db, id) => doc(db, 'workshops', W4, 'fahrzeuge', id);
+await t('Mitglied liest Fuhrpark', assertSucceeds(getDocs(collection(peF, 'workshops', W4, 'fahrzeuge'))));
+await t('Fremder liest Fuhrpark NICHT', assertFails(getDocs(collection(frF, 'workshops', W4, 'fahrzeuge'))));
+await t('Admin legt Fahrzeug an', assertSucceeds(setDoc(vRef(seF, 'v2'), { code: '100', typ: 'MK 100' })));
+await t('Admin ändert Fahrzeug', assertSucceeds(updateDoc(vRef(seF, 'v2'), { kz: 'HH-KS 100', hu: '2027-05-01' })));
+await t('Mitarbeiter legt KEIN Fahrzeug an', assertFails(setDoc(vRef(peF, 'v3'), { code: '1', typ: 'X' })));
+await t('Mitarbeiter ändert KEIN Kennzeichen', assertFails(updateDoc(vRef(peF, 'v1'), { kz: 'XX' })));
+await t('Mitarbeiter setzt „letzter Service“', assertSucceeds(updateDoc(vRef(peF, 'v1'), { letzterService: '2026-11-22', letzterServiceVon: 'PE' })));
+await t('… aber nicht zusammen mit anderen Feldern', assertFails(updateDoc(vRef(peF, 'v1'), { letzterService: '2026-11-23', hu: '2030-01-01' })));
+await t('Mitarbeiter löscht KEIN Fahrzeug', assertFails(deleteDoc(vRef(peF, 'v1'))));
+await t('Admin löscht Fahrzeug', assertSucceeds(deleteDoc(vRef(seF, 'v2'))));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

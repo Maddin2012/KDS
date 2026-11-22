@@ -4,6 +4,7 @@
 const K_TPL = 'kds_local_templates';
 const K_PROTO = 'kds_local_protocols';
 const K_PINS = 'kds_local_pins';
+const K_FLEET = 'kds_local_fleet';
 const K_CLAIM = 'kds_local_claim';
 const K_REC = 'kds_local_recoveries';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -31,11 +32,14 @@ export function createLocalStore() {
   const tplSubs = new Set(), protoSubs = new Set();
   const emitTpl = () => tplSubs.forEach(cb => cb(read(K_TPL, {})));
   const emitProto = () => protoSubs.forEach(cb => cb(read(K_PROTO, [])));
+  const fleetSubs = new Set();
+  const emitFleet = () => fleetSubs.forEach(cb => cb(read(K_FLEET, [])));
 
   // Andere Tabs im selben Browser
   window.addEventListener('storage', (e) => {
     if (e.key === K_TPL) emitTpl();
     if (e.key === K_PROTO) emitProto();
+    if (e.key === K_FLEET) emitFleet();
   });
 
   return {
@@ -90,6 +94,22 @@ export function createLocalStore() {
       all[cat] = { groups: tpl.groups, updatedBy: by || '', updatedAt: Date.now(), textFix: tpl.textFix || 1 };
       if (!write(K_TPL, all)) throw new Error('Speicher voll');
       emitTpl();
+    },
+
+    /* ---------- Fuhrpark ---------- */
+    onVehicles(cb) { fleetSubs.add(cb); cb(read(K_FLEET, [])); return () => fleetSubs.delete(cb); },
+    async saveVehicle(id, data, by) {
+      const list = read(K_FLEET, []);
+      const vid = id || ('f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+      const i = list.findIndex(v => v.id === vid);
+      const doc = { ...data, id: vid, updatedBy: by || '', updatedAt: Date.now() };
+      if (i >= 0) list[i] = doc; else list.push(doc);
+      write(K_FLEET, list); emitFleet(); return vid;
+    },
+    saveVehicleNow(id, data, by) { return this.saveVehicle(id, data, by); },
+    async deleteVehicle(id) { write(K_FLEET, read(K_FLEET, []).filter(v => v.id !== id)); emitFleet(); },
+    async setLastService(id, date, by) {
+      write(K_FLEET, read(K_FLEET, []).map(v => v.id === id ? { ...v, letzterService: date, letzterServiceVon: by || '' } : v)); emitFleet();
     },
 
     onProtocols(cb) { protoSubs.add(cb); cb(read(K_PROTO, [])); return () => protoSubs.delete(cb); },

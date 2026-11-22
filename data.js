@@ -180,6 +180,22 @@ const browserStore = {
   keys: () => { try { return Object.keys(localStorage); } catch (e) { return []; } }
 };
 
+/* Fuhrpark der alten Werkstattauftrags-Version (krandienst:werkstattauftraege:fuhrpark) */
+export function legacyFleet(store = browserStore) {
+  let list = [];
+  try { list = JSON.parse(store.getItem('krandienst:werkstattauftraege:fuhrpark') || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list)) return [];
+  const s = (v) => String(v == null ? '' : v).trim();
+  return list.filter(v => v && s(v.id)).map(v => ({
+    code: s(v.code), typ: s(v.id), werk: s(v.werk), kz: s(v.kz), baujahr: s(v.baujahr), fin: s(v.fin),
+    uvv: s(v.uvv), hu: s(v.hu), sp: s(v.sp), letzterService: s(v.letzterService)
+  }));
+}
+
+/* Felder eines Fahrzeugs (Fuhrpark) */
+export const VEHICLE_FIELDS = ['code', 'typ', 'werk', 'kz', 'baujahr', 'fin', 'uvv', 'hu', 'sp', 'letzterService'];
+export const vehicleLabel = (v) => [v.code, v.typ].filter(Boolean).join(' · ');
+
 export function migrateOldData(store = browserStore) {
   const result = { templates: {}, drafts: {} };
   const found = findOldKeys(store.keys());

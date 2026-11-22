@@ -294,6 +294,29 @@ export function createCloudStore(cfg) {
       return Promise.resolve(ref.id);
     },
 
+    /* ---------- Fuhrpark ---------- */
+    onVehicles(cb, onErr) {
+      return onSnapshot(sub('fahrzeuge'), { includeMetadataChanges: true }, (qs) => {
+        const list = [];
+        qs.forEach(d => list.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites }));
+        cb(list);
+      }, (err) => { console.error(err); if (onErr) onErr(err); });   // z. B. alte Firebase-Regeln: kein Zugriffsverlust
+    },
+    saveVehicle(id, data, by) {
+      const ref = id ? doc(db, 'workshops', wid, 'fahrzeuge', id) : doc(sub('fahrzeuge'));
+      track(setDoc(ref, { ...data, updatedBy: by || '', updatedAt: serverTimestamp() })).catch(() => {});
+      return Promise.resolve(ref.id);
+    },
+    saveVehicleNow(id, data, by) {   // wartet auf den Server (für Fehlermeldungen beim Admin)
+      const ref = id ? doc(db, 'workshops', wid, 'fahrzeuge', id) : doc(sub('fahrzeuge'));
+      return track(setDoc(ref, { ...data, updatedBy: by || '', updatedAt: serverTimestamp() })).then(() => ref.id);
+    },
+    deleteVehicle(id) { return track(deleteDoc(doc(db, 'workshops', wid, 'fahrzeuge', id))); },
+    /* „Letzter Service“ darf jedes Mitglied setzen (beim Abschluss einer Serviceliste) */
+    setLastService(id, date, by) {
+      return track(updateDoc(doc(db, 'workshops', wid, 'fahrzeuge', id), { letzterService: date, letzterServiceVon: by || '' }));
+    },
+
     /* Nachträgliche Bearbeitung durch Admins (Regeln prüfen Recht und Felder) */
     updateProtocol(id, patch) {
       return track(updateDoc(doc(db, 'workshops', wid, 'protocols', id), patch));
