@@ -132,8 +132,9 @@ function renderNav() {
   $('fleet-count').textContent = S.vehicles.length;
 
   const meBtn = $('btn-me');
-  meBtn.innerHTML = S.me ? esc(S.me) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
-  meBtn.title = S.me ? monteurLabel(S.me) : '';
+  $('me-label').innerHTML = S.me ? esc(S.me) + (amAdmin() ? '<span class="admin-tag">Admin</span>' : '') : 'Auswählen …';
+  meBtn.dataset.who = S.me ? monteurLabel(S.me) : '';
+  meBtn.title = [meBtn.dataset.who, meBtn.dataset.status].filter(Boolean).join(' · ');
 
 }
 
@@ -1960,9 +1961,13 @@ async function start() {
 
   S.store.onSync((state, detail) => {
     const label = { ok: 'OK', warn: 'Warnung', err: 'Fehler' }[state] || state;
-    $('sync').className = 'sync ' + state;
-    $('sync-text').innerHTML = `<b>${esc(label)}</b>${detail ? `<small>${esc(detail)}</small>` : ''}`;
-    $('sync').title = label + (detail ? ' – ' + detail : '');
+    const btn = $('btn-me');
+    btn.className = 'side-btn me-btn sync ' + state;
+    $('sync-label').textContent = label;
+    $('sync-detail').textContent = state === 'ok' ? '' : detail;
+    $('sync-detail').className = 'sync-detail ' + state;
+    btn.dataset.status = label + (detail ? ' – ' + detail : '');
+    btn.title = [btn.dataset.who, btn.dataset.status].filter(Boolean).join(' · ');
   });
   S.store.onLost(() => {
     S.store.leave();

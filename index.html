@@ -77,9 +77,13 @@
     <div class="side-foot">
       <div>
         <span class="lbl">Nutzer</span>
-        <button class="side-btn" id="btn-me" type="button">–</button>
+        <button class="side-btn me-btn sync" id="btn-me" type="button">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="me-label">–</span>
+          <span class="sync-label" id="sync-label">…</span>
+        </button>
+        <div class="sync-detail" id="sync-detail"></div>
       </div>
-      <div class="sync" id="sync"><span class="dot"></span><span id="sync-text">…</span></div>
       <div class="build" id="build"></div>
     </div>
   </div>
