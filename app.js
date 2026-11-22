@@ -362,10 +362,9 @@ function renderStock() {
   if (!list.length) { $('stock-list').innerHTML = '<div class="empty-note">Kein Artikel zu dieser Auswahl.</div>'; return; }
   $('stock-list').innerHTML = list.map(x => `
     <button class="arch-row art-row" data-aid="${esc(x.id)}" type="button">
-      <span class="arch-date mono">${esc(x.sku || '—')}</span>
       <span class="arch-main">
         <span class="veh">${esc(x.name || 'Ohne Bezeichnung')}</span>
-        <span class="meta" style="display:block">${esc([x.kat, x.lagerort, x.gebinde].filter(Boolean).join(' · '))}</span>
+        <span class="meta" style="display:block">${x.sku ? `<span class="mono">${esc(x.sku)}</span> · ` : ''}${esc([x.kat, x.lagerort, x.gebinde].filter(Boolean).join(' · '))}</span>
       </span>
       <span class="badges"><span class="art-qty">${esc(fmtNum(x.bestand))} ${esc(x.einheit || '')}</span>${artBadge(x)}</span>
     </button>`).join('');

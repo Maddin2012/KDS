@@ -883,3 +883,5 @@
     .art-grid .o-field input, .art-grid .o-field select, .sup-table input { border:0 !important; padding:0 !important; background:none !important; appearance:none }
   }
   .hist-table th, .sup-table th { text-align:left }
+  .arch-row.art-row { grid-template-columns:1fr auto }
+  .art-row .meta .mono { font-family:'IBM Plex Mono',monospace; color:var(--text) }
