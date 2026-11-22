@@ -91,7 +91,10 @@ Auftrag mit allen n.i.O.-Punkten (nicht behoben) als Positionen an.
 **Fuhrpark.** Seitenleiste → *Werkstatt* → **Fuhrpark**: alle Fahrzeuge mit
 ID, Typ, Kennzeichen, Werk-Nr., Baujahr, FIN, **UVV/HU/SP fällig am** und
 **letzter Service**. Fälligkeiten sind markiert (rot = überfällig, gelb = innerhalb
-von 30 Tagen). Fahrzeuge anlegen/ändern/löschen nur Admins; alle können ansehen.
+von 30 Tagen). Filter oben: **Prüfung** (SP, HU, UVV, Service – sortiert dann nach
+Fälligkeit, früheste zuerst) und **Fälligkeit** (fällig, nur überfällig, nur in 30 Tagen,
+ohne Datum). Service gilt 12 Monate nach dem letzten Service als fällig.
+Fahrzeuge anlegen/ändern/löschen nur Admins; alle können ansehen.
 Die alte Fahrzeugliste lässt sich über ⚙ → „Daten aus alter Version übernehmen“
 einlesen (nur neue Fahrzeuge werden angelegt).
 In der Serviceliste schlägt das Feld **ID / Fahrzeug** die Fahrzeuge vor;

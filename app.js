@@ -1109,17 +1109,41 @@ function dueState(iso) {
   return days < 0 ? 'over' : days <= 30 ? 'soon' : 'ok';
 }
 const DUE_FIELDS = [['uvv', 'UVV'], ['hu', 'HU'], ['sp', 'SP']];
+/* Service: fällig 12 Monate nach dem letzten Service (gelb ab 30 Tage vorher) */
+const SERVICE_MONTHS = 12;
+function serviceDue(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00'); d.setMonth(d.getMonth() + SERVICE_MONTHS);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+/* Fälligkeitsdatum je Prüfung (für Service: errechnet aus dem letzten Service) */
+const dueDateOf = (v, kind) => kind === 'service' ? serviceDue(v.letzterService) : (v[kind] || '');
 
 function renderFleet() {
   const q = $('fleet-search').value.trim().toLowerCase();
-  const list = sortVehicles(S.vehicles).filter(v => !q ||
-    [v.code, v.typ, v.kz, v.werk, v.fin, v.baujahr].join(' ').toLowerCase().includes(q));
+  const kind = $('fleet-kind').value, state = $('fleet-state').value;
+  const KIND_LABEL = { sp: 'SP', hu: 'HU', uvv: 'UVV', service: 'Service' };
+  // ohne gewählte Prüfung gilt der Zustand für irgendeine der Prüfungen
+  const kinds = kind ? [kind] : ['uvv', 'hu', 'sp', 'service'];
+  const stateOk = (v) => {
+    if (!state) return true;
+    const sts = kinds.map(k => dueState(dueDateOf(v, k)));
+    if (state === 'due') return sts.some(s => s === 'over' || s === 'soon');
+    if (state === 'none') return sts.some(s => s === '');
+    return sts.includes(state);
+  };
+  let list = sortVehicles(S.vehicles).filter(v => !q ||
+    [v.code, v.typ, v.kz, v.werk, v.fin, v.baujahr].join(' ').toLowerCase().includes(q)).filter(stateOk);
+  // mit gewählter Prüfung: nach Fälligkeit sortieren (früheste zuerst, ohne Datum ans Ende)
+  if (kind) list = list.slice().sort((x, y) => (dueDateOf(x, kind) || '9999').localeCompare(dueDateOf(y, kind) || '9999'));
   let over = 0, soon = 0;
-  S.vehicles.forEach(v => DUE_FIELDS.forEach(([f]) => { const st = dueState(v[f]); if (st === 'over') over++; if (st === 'soon') soon++; }));
+  S.vehicles.forEach(v => kinds.forEach(k => { const st = dueState(dueDateOf(v, k)); if (st === 'over') over++; if (st === 'soon') soon++; }));
+  const lbl = kind ? KIND_LABEL[kind] + ': ' : '';
   $('fleet-summary').innerHTML = S.vehicles.length ? `<div class="fleet-summary">
-      ${over ? `<span class="badge bad">${over} überfällig</span>` : ''}
-      ${soon ? `<span class="badge pend">${soon} in den nächsten 30 Tagen fällig</span>` : ''}
-      ${!over && !soon ? '<span class="badge ok">Keine Fälligkeiten in den nächsten 30 Tagen</span>' : ''}
+      ${over ? `<span class="badge bad">${lbl}${over} überfällig</span>` : ''}
+      ${soon ? `<span class="badge pend">${lbl}${soon} in den nächsten 30 Tagen fällig</span>` : ''}
+      ${!over && !soon ? `<span class="badge ok">${lbl}Keine Fälligkeiten in den nächsten 30 Tagen</span>` : ''}
+      ${kind || state ? `<span class="badge cat">${list.length} von ${S.vehicles.length} Fahrzeugen</span>` : ''}
     </div>` : '';
   if (S.fleetError) {
     $('fleet-list').innerHTML = `<div class="empty-note">${S.fleetError === 'rules'
@@ -1133,11 +1157,14 @@ function renderFleet() {
       : 'Fahrzeuge legen die Admins (SE, KÖ) an.'}</div>`;
     return;
   }
-  if (!list.length) { $('fleet-list').innerHTML = '<div class="empty-note">Kein Fahrzeug zu dieser Suche.</div>'; return; }
+  if (!list.length) { $('fleet-list').innerHTML = '<div class="empty-note">Kein Fahrzeug zu dieser Auswahl.</div>'; return; }
   const due = (v, f) => { const st = dueState(v[f]); return `<span class="due ${st}">${esc(fmtDay(v[f]) || '—')}</span>`; };
+  const svc = (v) => { const nd = serviceDue(v.letzterService), st = dueState(nd);
+    return v.letzterService ? `<span class="due ${st}" title="nächster Service fällig ${esc(fmtDay(nd))}">${esc(fmtDay(v.letzterService))}</span>` : '—'; };
+  const hl = (k) => kind === k ? ' class="col-hl"' : '';
   $('fleet-list').innerHTML = `
     <table class="fleet-table">
-      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th>UVV</th><th>HU</th><th>SP</th><th>Letzter Service</th></tr></thead>
+      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
       <tbody>${list.map(v => `
         <tr class="fleet-row" data-vid="${esc(v.id)}" tabindex="0">
           <td data-l="ID" class="mono"><b>${esc(v.code || '—')}</b></td>
@@ -1147,11 +1174,11 @@ function renderFleet() {
           <td data-l="UVV fällig">${due(v, 'uvv')}</td>
           <td data-l="HU fällig">${due(v, 'hu')}</td>
           <td data-l="SP fällig">${due(v, 'sp')}</td>
-          <td data-l="Letzter Service">${esc(fmtDay(v.letzterService) || '—')}</td>
+          <td data-l="Letzter Service">${svc(v)}</td>
         </tr>`).join('')}
       </tbody>
     </table>
-    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Fahrzeug antippen für Details${amAdmin() ? ' und zum Bearbeiten' : ''}.</p>`;
+    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen für Details${amAdmin() ? ' und zum Bearbeiten' : ''}.</p>`;
 }
 
 /* Fahrzeug anzeigen / bearbeiten (bearbeiten nur Admins) */
@@ -2439,6 +2466,7 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+['fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
 $('orders-status').addEventListener('change', renderOrders);
 ['stock-search', 'stock-ort', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));

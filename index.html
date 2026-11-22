@@ -221,6 +221,12 @@
       <div id="view-fleet" class="hidden">
         <div class="arch-tools no-print">
           <input id="fleet-search" type="search" placeholder="Suchen: ID, Fahrzeug, Kennzeichen, Werk-Nr. …" autocomplete="off">
+          <select id="fleet-kind" aria-label="Prüfung">
+            <option value="">Alle Prüfungen</option><option value="sp">SP</option><option value="hu">HU</option><option value="uvv">UVV</option><option value="service">Service</option>
+          </select>
+          <select id="fleet-state" aria-label="Fälligkeit">
+            <option value="">Alle Fahrzeuge</option><option value="due">Fällig (überfällig + 30 Tage)</option><option value="over">Nur überfällig</option><option value="soon">Nur in 30 Tagen fällig</option><option value="none">Ohne Datum</option>
+          </select>
         </div>
         <div id="fleet-summary"></div>
         <div id="fleet-list"></div>

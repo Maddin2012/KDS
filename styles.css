@@ -931,3 +931,4 @@
   .set-btn.set-blocked small { color:#b42318; font-weight:600 }
   .btn-big.btn-danger-big { background:#b42318; color:#fff }
   .btn-big.btn-danger-big:hover { background:#8f1c13 }
+  .fleet-table th.col-hl { color:var(--orange-dk); box-shadow:inset 0 -3px 0 var(--orange) }
