@@ -44,21 +44,20 @@
     </div>
 
     <div class="side-groups">
-      <nav class="nav-group" data-group="service">
-        <button class="nav-group-h" type="button" data-group-toggle="service" aria-expanded="true">
-          <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
-        </button>
-        <div class="nav-group-b">
-          <div id="nav-cats"><!-- Kategorien per Script --></div>
-          <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
-        </div>
-      </nav>
-
       <nav class="nav-group" data-group="werkstatt">
         <button class="nav-group-h" type="button" data-group-toggle="werkstatt" aria-expanded="true">
           <span>Werkstatt</span><span class="chev" aria-hidden="true">▾</span>
         </button>
         <div class="nav-group-b">
+          <div class="nav-group nav-sub" data-group="service">
+            <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="service" aria-expanded="true">
+              <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav-group-b">
+              <div id="nav-cats"><!-- Kategorien per Script --></div>
+              <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
+            </div>
+          </div>
           <div class="nav-item" id="nav-orders" data-view="orders">Werkstattaufträge <span class="count" id="orders-count">0</span></div>
           <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
         </div>

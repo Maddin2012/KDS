@@ -832,3 +832,10 @@
   }
   /* Touch-Geräte: keine „hängende“ Zeilen-Hervorhebung nach dem Antippen */
   @media (hover:none) { .service-table tr:hover td { background:transparent } }
+
+  /* Untermenü innerhalb einer Hauptgruppe (Werkstatt → Serviceliste) */
+  .nav-sub { margin:0 0 2px }
+  .nav-group-h.nav-sub-h { font-size:14px; letter-spacing:.05em; font-weight:600; padding:8px 12px; color:#d5dadd }
+  .nav-sub.has-active > .nav-sub-h { color:var(--orange) }
+  .nav-sub > .nav-group-b { margin-left:12px; padding-bottom:4px }
+  .nav-sub-h .chev { font-size:12px }

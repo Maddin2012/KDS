@@ -100,15 +100,17 @@ function confirmModal(message, confirmLabel, danger = true) {
    ===================================================================== */
 /* Hauptgruppen der Seitenleiste: auf-/zuklappbar, Zustand je Gerät gemerkt.
    Die Gruppe der gerade geöffneten Seite ist immer aufgeklappt. */
-const viewGroup = () => (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? 'service'
-  : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? 'werkstatt' : '';
+/* Gruppen der geöffneten Seite (äußere zuerst) – diese bleiben immer aufgeklappt */
+const activeGroups = () => (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'service']
+  : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? ['werkstatt'] : [];
+const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
 function renderNavGroups() {
-  const closed = navClosed(), active = viewGroup();
+  const closed = navClosed(), active = activeGroups();
   document.querySelectorAll('.nav-group').forEach(g => {
-    const k = g.dataset.group, isClosed = !!closed[k] && k !== active;
+    const k = g.dataset.group, isClosed = !!closed[k] && !active.includes(k);
     g.classList.toggle('closed', isClosed);
-    g.classList.toggle('has-active', k === active);
+    g.classList.toggle('has-active', active.includes(k));
     g.querySelector('.nav-group-h').setAttribute('aria-expanded', String(!isClosed));
   });
 }
@@ -1822,7 +1824,7 @@ document.addEventListener('click', (e) => {
   if (gt) {
     const k = gt.dataset.groupToggle, closed = navClosed();
     const nowClosed = !gt.closest('.nav-group').classList.contains('closed');
-    if (nowClosed && k === viewGroup()) return;     // die Gruppe der offenen Seite bleibt offen
+    if (nowClosed && activeGroups().includes(k)) return;     // die Gruppe der offenen Seite bleibt offen
     closed[k] = nowClosed; lsSet('kds_nav_closed', JSON.stringify(closed)); renderNavGroups();
     return;
   }
