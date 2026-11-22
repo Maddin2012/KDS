@@ -105,10 +105,20 @@ const activeGroups = () => (S.view === 'list' || S.view === 'archive' || S.view 
   : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
+let lastNavPage = '';
 function renderNavGroups() {
-  const closed = navClosed(), active = activeGroups();
+  const active = activeGroups();
+  // Neue Seite geöffnet → deren Gruppen aufklappen; danach darf man sie wieder zuklappen
+  const page = S.view + '|' + S.cat;
+  if (page !== lastNavPage) {
+    lastNavPage = page;
+    const c = navClosed(); let changed = false;
+    active.forEach(k => { if (c[k]) { delete c[k]; changed = true; } });
+    if (changed) lsSet('kds_nav_closed', JSON.stringify(c));
+  }
+  const closed = navClosed();
   document.querySelectorAll('.nav-group').forEach(g => {
-    const k = g.dataset.group, isClosed = !!closed[k] && !active.includes(k);
+    const k = g.dataset.group, isClosed = !!closed[k];
     g.classList.toggle('closed', isClosed);
     g.classList.toggle('has-active', active.includes(k));
     g.querySelector('.nav-group-h').setAttribute('aria-expanded', String(!isClosed));
@@ -1824,7 +1834,6 @@ document.addEventListener('click', (e) => {
   if (gt) {
     const k = gt.dataset.groupToggle, closed = navClosed();
     const nowClosed = !gt.closest('.nav-group').classList.contains('closed');
-    if (nowClosed && activeGroups().includes(k)) return;     // die Gruppe der offenen Seite bleibt offen
     closed[k] = nowClosed; lsSet('kds_nav_closed', JSON.stringify(closed)); renderNavGroups();
     return;
   }
