@@ -146,11 +146,13 @@ service cloud.firestore {
 
       // Werkstattaufträge: anlegen, lesen und bearbeiten alle Mitglieder, löschen nur Admins.
       // Die Auftragsnummer bleibt nach dem Anlegen unverändert.
+      // Abgeschlossene Aufträge (status „fertig“) ändern nur noch Admins.
       match /auftraege/{oid} {
         allow read: if isMember(wid);
         allow create: if isMember(wid)
           && request.resource.data.nr is string && request.resource.data.nr.size() > 0 && request.resource.data.nr.size() < 80;
-        allow update: if isMember(wid) && request.resource.data.nr == resource.data.nr;
+        allow update: if isMember(wid) && request.resource.data.nr == resource.data.nr
+          && (resource.data.get('status', 'offen') != 'fertig' || isAdmin(wid));
         allow delete: if isAdmin(wid);
       }
 

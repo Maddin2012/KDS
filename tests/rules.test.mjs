@@ -141,6 +141,11 @@ await t('Mitarbeiter bearbeitet Auftrag', assertSucceeds(updateDoc(oRef(peF, 'a1
 await t('Nummer nachträglich ändern abgelehnt', assertFails(updateDoc(oRef(peF, 'a1'), { nr: '999' })));
 await t('Fremder liest keine Aufträge', assertFails(getDocs(collection(frF, 'workshops', W4, 'auftraege'))));
 await t('Mitarbeiter löscht KEINEN Auftrag', assertFails(deleteDoc(oRef(peF, 'a1'))));
+await t('Mitarbeiter schließt Auftrag ab', assertSucceeds(updateDoc(oRef(peF, 'a1'), { status: 'fertig' })));
+await t('Mitarbeiter ändert abgeschlossenen Auftrag NICHT', assertFails(updateDoc(oRef(peF, 'a1'), { km: '1' })));
+await t('Mitarbeiter öffnet abgeschlossenen Auftrag NICHT wieder', assertFails(updateDoc(oRef(peF, 'a1'), { status: 'offen' })));
+await t('Admin ändert abgeschlossenen Auftrag', assertSucceeds(updateDoc(oRef(seF, 'a1'), { km: '2', status: 'offen' })));
+await t('… danach wieder offen: Mitarbeiter darf ändern', assertSucceeds(updateDoc(oRef(peF, 'a1'), { km: '3' })));
 await t('Admin löscht Auftrag', assertSucceeds(deleteDoc(oRef(seF, 'a1'))));
 await t('Zähler startet bei 1', assertSucceeds(setDoc(zRef(peF, '088-20261122'), { n: 1 })));
 await t('Zähler +1', assertSucceeds(setDoc(zRef(peF, '088-20261122'), { n: 2 })));

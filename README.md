@@ -81,7 +81,10 @@ Im Auftrag: Status *Offen / In Arbeit / Abgeschlossen*, Km, Std. OW/UW, Datum,
 Positionen (Arbeit, Material/Teile, Std., erledigt – **Enter** legt die nächste
 Position an) mit Stundensumme, Bemerkungen, ausführende Mitarbeiter. Alles wird
 automatisch gespeichert und ist sofort auf allen Geräten sichtbar; Drucken/PDF
-über den Knopf oben. Anlegen und bearbeiten dürfen alle, **löschen nur Admins**.
+über den Knopf oben. Anlegen, bearbeiten und abschließen dürfen alle, **löschen nur Admins**.
+**Abgeschlossene Aufträge** sind für alle anderen schreibgeschützt und werden nur
+noch von Admins geändert. Ändert ein Admin einen abgeschlossenen Auftrag und ist
+danach nicht jede Position erledigt, springt der Status automatisch auf **Offen**.
 Im abgeschlossenen Serviceprotokoll legt **„🔧 Auftrag aus offenen Mängeln“** einen
 Auftrag mit allen n.i.O.-Punkten (nicht behoben) als Positionen an.
 

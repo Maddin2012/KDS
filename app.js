@@ -324,10 +324,14 @@ function orderRowHtml(r, i) {
   </tr>`;
 }
 
+/* Abgeschlossene Aufträge dürfen nur Admins (SE, KÖ mit PIN) ändern */
+const orderLocked = (o) => !!o && o.status === 'fertig' && !amAdmin();
+
 function renderOrder() {
   const o = S.orderEdit;
   if (!o) { S.view = 'orders'; render(); return; }
   const admin = amAdmin();
+  const locked = orderLocked(o);
   const vehLine = [o.kz, o.werk ? 'Werk-Nr. ' + o.werk : ''].filter(Boolean).join(' · ');
   const created = o.created ? new Date(o.created).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
   const src = o.source ? S.protocols.find(p => p.id === o.source) : null;
@@ -338,7 +342,7 @@ function renderOrder() {
         <span class="o-saved" id="o-saved"></span>
       </div>
       <div class="actions">
-        <select id="o-status" class="o-status" data-f="status" aria-label="Status">
+        <select id="o-status" class="o-status" data-f="status" aria-label="Status" ${locked ? 'disabled' : ''}>
           ${Object.entries(ORDER_STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? 'selected' : ''}>${v}</option>`).join('')}
         </select>
         ${admin ? '<button class="btn-sec btn-danger" data-act="delete-order">🗑️ Löschen</button>' : ''}
@@ -346,7 +350,8 @@ function renderOrder() {
     </div>
 
     <div class="box">
-      <div class="sec-title"><div class="title-left"><span>Auftrag <span class="mono" style="font-size:16px">${esc(o.nr)}</span></span></div>${statusBadge(o.status)}</div>
+      <div class="sec-title"><div class="title-left"><span>Auftrag <span class="mono" style="font-size:16px">${esc(o.nr)}</span></span></div><span id="o-badge">${statusBadge(o.status)}</span></div>
+      ${locked ? '<p class="o-locked no-print">🔒 Abgeschlossen – ändern können nur die Admins (SE, KÖ).</p>' : ''}
       <div class="o-grid">
         <div class="o-field o-veh">
           <label>Fahrzeug</label>
@@ -390,8 +395,27 @@ function renderOrder() {
     <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
       src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>`;
   renderOrderCrew();
+  if (locked) lockOrderView();
   renderChrome();                       // erst sichtbar machen, dann Höhen berechnen
   sizeOrderTextareas();
+}
+/* Schreibschutz für abgeschlossene Aufträge (Nicht-Admins) */
+function lockOrderView() {
+  const v = $('view-order');
+  v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
+}
+/* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
+function reopenIfIncomplete() {
+  const o = S.orderEdit;
+  if (!o || o.status !== 'fertig' || !amAdmin()) return;
+  const open = o.rows.some(r => (String(r.text || '').trim() || String(r.mat || '').trim() || String(r.h || '').trim()) && !r.done);
+  if (!open) return;
+  o.status = 'offen';
+  if ($('o-status')) $('o-status').value = 'offen';
+  if ($('o-badge')) $('o-badge').innerHTML = statusBadge('offen');
+  showToast('Nicht alle Positionen erledigt – Auftrag wieder auf „Offen“ gesetzt');
 }
 /* Textfelder an ihren Inhalt anpassen – nur wenn sichtbar (sonst ergibt die Messung 0) */
 function sizeOrderTextareas() {
@@ -415,7 +439,7 @@ window.addEventListener('resize', () => { if (S.view === 'order') sizeOrderTexta
 
 function onOrderInput(t) {
   const o = S.orderEdit, f = t.dataset.f;
-  if (!f) return;
+  if (!f || orderLocked(o)) return;
   const tr = t.closest('tr[data-rid]');
   if (tr) {
     const r = o.rows.find(x => x.id === tr.dataset.rid);
@@ -427,10 +451,12 @@ function onOrderInput(t) {
     o[f] = t.value;
     if (f === 'status') { renderOrder(); }
   }
+  if (f !== 'status') reopenIfIncomplete();
   if (t.tagName === 'TEXTAREA') autoSize(t);
   queueOrderSave();
 }
 function addOrderRow() {
+  if (orderLocked(S.orderEdit)) return;
   S.orderEdit.rows.push(emptyOrderRow());
   renderOrder(); queueOrderSave();
   const all = $('view-order').querySelectorAll('textarea[data-f="text"]');
@@ -460,7 +486,16 @@ function saveOrderNow() {
   const local = S.orders.find(x => x.id === o.id); if (local) Object.assign(local, data);
   S.store.saveOrder(o.id, data, S.me)
     .then(() => { const el = $('o-saved'); if (el && S.openOrderId === o.id && !S.orderDirty) el.textContent = 'gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); })
-    .catch(() => { S.orderDirty = true; const el = $('o-saved'); if (el) el.textContent = 'nicht gespeichert – erneuter Versuch …'; setTimeout(saveOrderNow, 3000); });
+    .catch((err) => {
+      if (err && err.code === 'permission-denied') {
+        // z. B. Auftrag wurde inzwischen abgeschlossen: Stand vom Server übernehmen, nicht endlos wiederholen
+        const remote = S.orders.find(x => x.id === o.id);
+        showToast('Änderung nicht gespeichert – der Auftrag ist abgeschlossen (nur SE/KÖ)');
+        if (remote && S.openOrderId === o.id) { S.orderEdit = normalizeOrder(remote); renderOrder(); }
+        return;
+      }
+      S.orderDirty = true; const el = $('o-saved'); if (el) el.textContent = 'nicht gespeichert – erneuter Versuch …'; setTimeout(saveOrderNow, 3000);
+    });
   const el = $('o-saved'); if (el) el.textContent = navigator.onLine ? 'wird gespeichert …' : 'offline gespeichert – wird übertragen';
 }
 function flushOrderSave() { if (orderSaveTimer) saveOrderNow(); }
@@ -505,7 +540,7 @@ function openNewOrder(pre = {}) {
     const veh = v ? { vehId: v.id, fahrzeug: v.typ || '', code: v.code || '', werk: v.werk || '', kz: v.kz || '' }
                   : { vehId: '', fahrzeug: free, code: '', werk: '', kz: '' };
     if (change) {
-      Object.assign(S.orderEdit, veh); close(); renderOrder(); queueOrderSave(); return;
+      Object.assign(S.orderEdit, veh); reopenIfIncomplete(); close(); renderOrder(); queueOrderSave(); return;
     }
     const btn = ov.querySelector('#no-form button[type="submit"]');
     btn.disabled = true; $('no-err').textContent = 'Nummer wird vergeben …';
@@ -1731,16 +1766,18 @@ const actions = {
   'back-orders': () => { flushOrderSave(); S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); },
   'order-add-row': () => addOrderRow(),
   'order-del-row': (btn) => {
+    if (orderLocked(S.orderEdit)) return;
     const rid = btn.closest('tr').dataset.rid, o = S.orderEdit;
     o.rows = o.rows.filter(r => r.id !== rid);
     if (!o.rows.length) o.rows.push(emptyOrderRow());
     renderOrder(); queueOrderSave();
   },
-  'order-vehicle': () => openNewOrder({ change: true }),
+  'order-vehicle': () => { if (!orderLocked(S.orderEdit)) openNewOrder({ change: true }); },
   'order-crew': (btn) => {
     const c = btn.dataset.code, o = S.orderEdit;
+    if (orderLocked(o)) return;
     o.crew = o.crew.includes(c) ? o.crew.filter(x => x !== c) : [...o.crew, c];
-    renderOrderCrew(); queueOrderSave();
+    renderOrderCrew(); reopenIfIncomplete(); queueOrderSave();
   },
   'delete-order': async () => {
     const o = S.orderEdit;
