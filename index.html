@@ -36,20 +36,23 @@
 <body>
 
 <div class="app">
+<script>/* Seitenleiste schon vor dem Laden der App richtig auf-/zuklappen (kein Aufblitzen) */
+  (function () { var s = null; try { s = localStorage.getItem('kds_sidebar_collapsed'); } catch (e) {}
+    if (s === 'true' || (s === null && window.innerWidth <= 940)) document.currentScript.parentNode.classList.add('sidebar-collapsed'); })();</script>
   <!-- ══ Seitenleiste ══ -->
   <div class="side">
     <div class="brand" id="brand-home" title="Startseite" role="button" tabindex="0">
       <div class="wm"><span class="bar"></span><span class="txt">Krandienst <em>Schulz</em></span></div>
-      <span class="sub" id="sidebar-sub">Serviceliste Kran</span>
+      <span class="sub" id="sidebar-sub">Betriebsportal</span>
     </div>
 
     <div class="side-groups">
-      <nav class="nav-group" data-group="werkstatt">
+      <nav class="nav-group closed" data-group="werkstatt">
         <button class="nav-group-h" type="button" data-group-toggle="werkstatt" aria-expanded="true">
           <span>Werkstatt</span><span class="chev" aria-hidden="true">▾</span>
         </button>
         <div class="nav-group-b">
-          <div class="nav-group nav-sub" data-group="orders">
+          <div class="nav-group nav-sub closed" data-group="orders">
             <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="orders" aria-expanded="true">
               <span>Werkstattaufträge</span><span class="chev" aria-hidden="true">▾</span>
             </button>
@@ -59,7 +62,7 @@
               <div class="nav-item" data-view="orders" data-ostatus="offen">Offen</div>
               <div class="nav-item" data-view="orders" data-ostatus="arbeit">In Arbeit</div>
               <div class="nav-item" data-view="orders" data-ostatus="fertig">Abgeschlossen</div>
-              <div class="nav-group nav-sub" data-group="service">
+              <div class="nav-group nav-sub closed" data-group="service">
                 <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="service" aria-expanded="true">
                   <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
                 </button>
@@ -74,7 +77,7 @@
         </div>
       </nav>
 
-      <nav class="nav-group" data-group="lager">
+      <nav class="nav-group closed" data-group="lager">
         <button class="nav-group-h" type="button" data-group-toggle="lager" aria-expanded="true">
           <span>Lager</span><span class="chev" aria-hidden="true">▾</span>
         </button>
@@ -111,21 +114,21 @@
       <div class="row">
         <div class="hero-title-group">
           <button class="btn-toggle-side no-print" id="btn-side" title="Navigation ein-/ausblenden">☰</button>
-          <h2 id="main-title">Serviceliste Kran</h2>
+          <h2 id="main-title">Startseite</h2>
         </div>
         <div class="hero-actions no-print" id="hero-actions">
           <!-- Liste -->
-          <button class="btn-outline" data-act="edit-template" data-show="list admin">Vorlage bearbeiten</button>
-          <button class="btn-outline" data-act="new-protocol" data-show="list">Neu beginnen</button>
-          <button class="btn-outline btn-pen" data-act="fleet-edit" data-show="fleet admin" id="btn-fleet-edit" title="Fuhrpark bearbeiten" aria-label="Fuhrpark bearbeiten" aria-pressed="false">✎</button>
-          <button class="btn-primary" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
-          <button class="btn-primary" data-act="new-article" data-show="stock admin">+ Artikel</button>
-          <button class="btn-w" data-act="print" data-show="list protocol fleet vehicle order orders stock article reorder">Drucken / PDF</button>
-          <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
+          <button class="btn-outline hidden" data-act="edit-template" data-show="list admin">Vorlage bearbeiten</button>
+          <button class="btn-outline hidden" data-act="new-protocol" data-show="list">Neu beginnen</button>
+          <button class="btn-outline btn-pen hidden" data-act="fleet-edit" data-show="fleet admin" id="btn-fleet-edit" title="Fuhrpark bearbeiten" aria-label="Fuhrpark bearbeiten" aria-pressed="false">✎</button>
+          <button class="btn-primary hidden" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
+          <button class="btn-primary hidden" data-act="new-article" data-show="stock admin">+ Artikel</button>
+          <button class="btn-w hidden" data-act="print" data-show="list protocol fleet vehicle order orders stock article reorder">Drucken / PDF</button>
+          <button class="btn-primary hidden" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
         </div>
       </div>
 
-      <div class="cards" id="cards">
+      <div class="cards hidden" id="cards">
         <div class="card">
           <label for="fId">ID / Fahrzeug</label>
           <input id="fId" placeholder="z. B. MK 88" autocomplete="off" list="veh-list">
@@ -153,7 +156,7 @@
 
     <div class="body" id="body">
       <!-- ── Startseite: Logo, bis ein Bereich gewählt wird ── -->
-      <div id="view-home" class="hidden">
+      <div id="view-home">
         <div class="home-logo">
           <img src="icons/icon-512.png" alt="KS Service – Krandienst Schulz" width="512" height="512">
           <div class="home-wm"><span class="bar"></span>Krandienst <em>Schulz</em></div>
@@ -162,7 +165,7 @@
         </div>
       </div>
       <!-- ── Ansicht: Serviceliste ausfüllen / Vorlage bearbeiten ── -->
-      <div id="view-list">
+      <div id="view-list" class="hidden">
         <div class="edit-banner hidden" id="edit-banner">
           <div><b>Vorlage bearbeiten</b> · Änderungen gelten für alle Geräte und werden sofort gespeichert.</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
