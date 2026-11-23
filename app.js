@@ -23,7 +23,7 @@ const S = {
   store: null,
   me: lsGet('kds_me', ''),
   cat: CATEGORIES.includes(lsGet('kds_cat', '')) ? lsGet('kds_cat', '') : 'Kran',
-  view: 'list',             // list | archive | protocol
+  view: 'home',             // home (Logo beim Öffnen) | list | archive | protocol | …
   edit: false,              // Vorlage bearbeiten (nur Admin)
   templates: {},            // zentral gespeicherte Vorlagen
   editTpl: null,            // Arbeitskopie im Bearbeitungsmodus
@@ -213,7 +213,8 @@ function renderChrome() {
   });
 
   let title;
-  if (mode === 'archive') title = 'Archiv';
+  if (mode === 'home') title = 'Startseite';
+  else if (mode === 'archive') title = 'Archiv';
   else if (mode === 'fleet') title = 'Fuhrpark';
   else if (mode === 'orders') title = 'Werkstattaufträge';
   else if (mode === 'order') title = 'Auftrag ' + ((S.orderEdit && S.orderEdit.nr) || '');
@@ -225,9 +226,11 @@ function renderChrome() {
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
-  $('sidebar-sub').textContent = (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
+  $('view-home').classList.toggle('hidden', S.view !== 'home');
+  document.body.classList.toggle('is-home', S.view === 'home');
   $('view-list').classList.toggle('hidden', S.view !== 'list');
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
@@ -237,7 +240,7 @@ function renderChrome() {
   $('view-stock').classList.toggle('hidden', S.view !== 'stock');
   $('view-article').classList.toggle('hidden', S.view !== 'article');
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
-  $('cards').classList.toggle('hidden', ['archive', 'edit', 'fleet', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
+  $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
@@ -2456,6 +2459,7 @@ function updatePasteButton() {
    Ereignisse
    ===================================================================== */
 const actions = {
+  'open-menu': () => { document.querySelector('.app').classList.remove('sidebar-collapsed'); },
   'print': () => {
     markEmptyDate();
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -2623,6 +2627,10 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('ms-monteure').classList.remove('open'); });
 
+/* Startseite: Klick auf „Krandienst Schulz“ oben in der Seitenleiste */
+const goHome = () => { flushTemplateSave(); flushOrderSave(); flushArtSave(); if (S.edit) { S.edit = false; S.editTpl = null; } S.view = 'home'; render(); window.scrollTo(0, 0); };
+$('brand-home').addEventListener('click', goHome);
+$('brand-home').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); } });
 $('btn-side').addEventListener('click', () => {
   const app = document.querySelector('.app');
   app.classList.toggle('sidebar-collapsed');

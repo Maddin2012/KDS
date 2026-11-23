@@ -980,3 +980,21 @@
     font-variant-numeric:tabular-nums lining-nums; color:var(--text) }
   @media (min-width:761px) { .fleet-table:not(.fe-mode) td[data-l="Fahrzeug"] { font-size:15px } }
   @media print { .fleet-table td[data-l="Fahrzeug"] b { font-size:10px } }
+  /* Startseite mit Logo */
+  #view-home { min-height:calc(100vh - 220px); display:grid; place-items:center }
+  #view-home.hidden { display:none }
+  .home-logo { display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; padding:24px 0 }
+  .home-logo img { width:min(260px, 60vw); height:auto; border-radius:22%; box-shadow:0 12px 40px rgba(17,18,19,.25); animation:homeIn .5s ease-out }
+  .home-wm { display:flex; align-items:center; gap:9px; font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:22px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--text) }
+  .home-wm .bar { width:5px; height:24px; background:var(--orange) }
+  .home-wm em { font-style:normal; color:var(--orange) }
+  .home-hint { margin:0; color:var(--steel); font-size:14px }
+  .home-menu { display:none }
+  @media (max-width:940px) { .home-menu { display:inline-flex } .home-hint { display:none } }
+  @keyframes homeIn { from { opacity:0; transform:scale(.94) } to { opacity:1; transform:none } }
+  @media (prefers-reduced-motion: reduce) { .home-logo img { animation:none } }
+  #brand-home { cursor:pointer } #brand-home:focus-visible { outline:2px solid var(--orange); outline-offset:-2px }
+  .home-menu { background:var(--black); color:#fff; border:0; border-radius:8px; padding:12px 22px; font-family:'Barlow Condensed',sans-serif;
+    font-weight:800; font-size:16px; letter-spacing:.1em; text-transform:uppercase; align-items:center; gap:8px; cursor:pointer }
+  .home-menu:hover { background:#2a2c2e }

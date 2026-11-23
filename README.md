@@ -138,6 +138,10 @@ Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.
 **Drucken / PDF.** A4, ohne Kopf-/Fußzeile des Browsers; leere Felder bleiben
 leer, abgewählte Punkte erscheinen nicht.
 
+**Startseite.** Beim Öffnen zeigt die App das Logo, bis links ein Bereich gewählt wird
+(am Handy über „Menü öffnen“). Ein Klick auf „Krandienst Schulz“ oben in der Seitenleiste
+führt jederzeit zurück zur Startseite.
+
 **Zurück.** Am Handy die Zurück-Geste (Wischen vom Rand) bzw. Zurück-Taste, am PC
 **Esc** oder die **Zurück-Taste an der Maus**: geht einen Schritt zurück. Ist ein
 Fenster offen (Einstellungen, Nutzer, Fahrzeug, Rückfrage …) oder am Handy die

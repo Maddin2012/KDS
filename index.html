@@ -38,7 +38,7 @@
 <div class="app">
   <!-- ══ Seitenleiste ══ -->
   <div class="side">
-    <div class="brand">
+    <div class="brand" id="brand-home" title="Startseite" role="button" tabindex="0">
       <div class="wm"><span class="bar"></span><span class="txt">Krandienst <em>Schulz</em></span></div>
       <span class="sub" id="sidebar-sub">Serviceliste Kran</span>
     </div>
@@ -142,6 +142,15 @@
     </div>
 
     <div class="body" id="body">
+      <!-- ── Startseite: Logo, bis ein Bereich gewählt wird ── -->
+      <div id="view-home" class="hidden">
+        <div class="home-logo">
+          <img src="icons/icon-512.png" alt="KS Service – Krandienst Schulz" width="512" height="512">
+          <div class="home-wm"><span class="bar"></span>Krandienst <em>Schulz</em></div>
+          <p class="home-hint">Bereich in der Seitenleiste wählen</p>
+          <button class="btn-primary home-menu" type="button" data-act="open-menu">☰ Menü öffnen</button>
+        </div>
+      </div>
       <!-- ── Ansicht: Serviceliste ausfüllen / Vorlage bearbeiten ── -->
       <div id="view-list">
         <div class="edit-banner hidden" id="edit-banner">
