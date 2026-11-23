@@ -221,6 +221,7 @@
       <div id="view-stock" class="hidden">
         <div class="arch-tools no-print">
           <input id="stock-search" type="search" placeholder="Suchen: Art.-Nr., Bezeichnung, Lieferant …" autocomplete="off">
+          <button class="scan-btn" id="stock-scan" type="button" title="Barcode scannen" aria-label="Barcode scannen">📷</button>
           <select id="stock-ort"><option value="">Alle Lagerorte</option></select>
           <select id="stock-kat"><option value="">Alle Kategorien</option></select>
         </div>
@@ -237,6 +238,7 @@
       <!-- ── Ansicht: Fahrzeugakte ── -->
       <div id="view-vehicle" class="hidden"></div>
       <input id="akte-file" type="file" class="hidden" multiple>
+      <div id="scan-ov" class="scan-ov hidden" role="dialog" aria-modal="true" aria-label="Barcode scannen"></div>
 
       <!-- ── Ansicht: Fuhrpark ── -->
       <div id="view-fleet" class="hidden">

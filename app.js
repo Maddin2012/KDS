@@ -346,7 +346,7 @@ function syncHeaderVehicle() {
 const EINHEITEN = ['Stk.', 'L', 'kg', 'm', 'Dose', 'Fass', 'Set', 'Karton', 'Paar', 'Rolle'];
 const DEFAULT_KATS = ['Filter', 'Gase', 'Lampen', 'Öl', 'PSA', 'Schmierstoffe', 'Spraydosen', 'Verbrauchsmaterial'];
 const DEFAULT_ORTE = ['Hauptlager', 'Werkstatt', 'Ersatzteillager'];
-const ART_FIELDS = ['sku', 'name', 'kat', 'einheit', 'gebinde', 'lagerort', 'minBestand', 'preis', 'notes', 'suppliers'];
+const ART_FIELDS = ['sku', 'barcode', 'name', 'kat', 'einheit', 'gebinde', 'lagerort', 'minBestand', 'preis', 'notes', 'suppliers'];
 const deSort = (x, y) => String(x).localeCompare(String(y), 'de', { sensitivity: 'base', numeric: true });
 const kategorien = () => [...new Set([...DEFAULT_KATS, ...(S.lagerCfg.kategorien || []), ...S.articles.map(x => x.kat).filter(Boolean)])].sort(deSort);
 const lagerorte = () => [...new Set([...DEFAULT_ORTE, ...(S.lagerCfg.lagerorte || []), ...S.articles.map(x => x.lagerort).filter(Boolean)])].sort(deSort);
@@ -384,7 +384,7 @@ function renderStock() {
   const q = $('stock-search').value.trim().toLowerCase(), ort = $('stock-ort').value, kat = $('stock-kat').value;
   const list = S.articles
     .filter(x => (!ort || x.lagerort === ort) && (!kat || x.kat === kat))
-    .filter(x => !q || [x.sku, x.name, x.kat, x.lagerort, x.gebinde, x.notes, ...(x.suppliers || []).flatMap(s => [s.name, s.bestellNr])].join(' ').toLowerCase().includes(q))
+    .filter(x => !q || [x.sku, x.barcode, x.name, x.kat, x.lagerort, x.gebinde, x.notes, ...(x.suppliers || []).flatMap(s => [s.name, s.bestellNr])].join(' ').toLowerCase().includes(q))
     .sort((x, y) => deSort(x.name || '', y.name || ''));
   // Auswertung (nur Admins): folgt Lagerort- und Kategorie-Filter, „Alle“ = gesamtes Lager
   const scope = S.articles.filter(x => (!ort || x.lagerort === ort) && (!kat || x.kat === kat));
@@ -449,6 +449,133 @@ function toggleArt(id) {
 }
 function collapseArt() { S.expandedArt = null; if (S.view !== 'article') closeArticleSubs(); }
 
+/* ---------- Barcode-Scanner (Kamera) ----------
+   Android/Chromebook: eingebauter BarcodeDetector. iPhone u. a.: ZXing (vendor/zxing, erst bei Bedarf geladen). */
+const SCAN_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'qr_code', 'data_matrix'];
+let zxingPromise = null;
+function loadZXing() {
+  if (window.ZXing) return Promise.resolve(window.ZXing);
+  return zxingPromise || (zxingPromise = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'vendor/zxing/zxing.min.js';
+    s.onload = () => res(window.ZXing); s.onerror = () => { zxingPromise = null; rej(new Error('Scanner konnte nicht geladen werden')); };
+    document.head.appendChild(s);
+  }));
+}
+async function makeDetector() {
+  if ('BarcodeDetector' in window) {
+    try {
+      const sup = await window.BarcodeDetector.getSupportedFormats();
+      const f = SCAN_FORMATS.filter(x => sup.includes(x));
+      if (f.length) { const d = new window.BarcodeDetector({ formats: f }); return async (v) => { const r = await d.detect(v); return r[0] ? r[0].rawValue : null; }; }
+    } catch (e) { /* weiter mit ZXing */ }
+  }
+  const Z = await loadZXing();
+  const F = Z.BarcodeFormat, hints = new Map();
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.CODE_93, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX]);
+  hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  const reader = new Z.MultiFormatReader(); reader.setHints(hints);
+  const c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+  return async (v) => {
+    const w = v.videoWidth, h = v.videoHeight; if (!w || !h) return null;
+    const k = Math.min(1, 960 / w); c.width = Math.round(w * k); c.height = Math.round(h * k);
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    try { return reader.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c)))).getText(); }
+    catch (e) { return null; } finally { reader.reset(); }
+  };
+}
+let scanCleanup = null;
+function closeScanner(val) { if (scanCleanup) scanCleanup(val === undefined ? null : val); }
+/* Öffnet die Kamera; liefert den gelesenen Code oder null (abgebrochen). Code kann auch eingetippt werden. */
+function scanBarcode(title) {
+  return new Promise((resolve) => {
+    const ov = $('scan-ov');
+    ov.innerHTML = `<div class="scan-card">
+      <div class="scan-head"><b>${esc(title || 'Barcode scannen')}</b><button type="button" class="scan-x" data-scan="cancel" aria-label="Schließen">✕</button></div>
+      <div class="scan-box"><video id="scan-video" playsinline muted autoplay></video><div class="scan-frame"></div><div class="scan-msg" id="scan-msg">Kamera wird gestartet …</div></div>
+      <form class="scan-manual" id="scan-form"><input id="scan-input" placeholder="oder Code eintippen" autocomplete="off" inputmode="text"><button class="btn-sec" type="submit">OK</button></form>
+    </div>`;
+    ov.classList.remove('hidden');
+    let stream = null, stopped = false;
+    const finish = (val) => {
+      if (stopped) return; stopped = true; scanCleanup = null;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      ov.classList.add('hidden'); ov.innerHTML = ''; ov.onclick = null; ov.onsubmit = null; document.removeEventListener('keydown', onKey, true);
+      resolve(val ? String(val).trim() : null);
+    };
+    scanCleanup = finish;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+    ov.onclick = (e) => { if (e.target.closest('[data-scan="cancel"]') || e.target === ov) finish(null); };
+    ov.onsubmit = (e) => { e.preventDefault(); const v = $('scan-input').value.trim(); if (v) finish(v); };
+    (async () => {
+      const video = $('scan-video'), msg = $('scan-msg');
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('nocam');
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        video.srcObject = stream; await video.play().catch(() => {});
+        const detect = await makeDetector();
+        msg.textContent = 'Barcode in den Rahmen halten';
+        const loop = async () => {
+          if (stopped) return;
+          let val = null; try { val = await detect(video); } catch (e) { /* nächster Versuch */ }
+          if (val) { if (navigator.vibrate) navigator.vibrate(60); finish(val); return; }
+          setTimeout(loop, 180);
+        };
+        loop();
+      } catch (e) {
+        msg.textContent = e && e.name === 'NotAllowedError' ? 'Kamera nicht erlaubt – in den Einstellungen des Geräts freigeben oder Code eintippen.' : 'Keine Kamera verfügbar – Code bitte eintippen.';
+        msg.classList.add('err'); const i = $('scan-input'); if (i) i.focus();
+      }
+    })();
+  });
+}
+const normCode = (s) => String(s || '').trim().toLowerCase();
+const findArticleByCode = (code) => { const c = normCode(code); return c ? (S.articles.find(a => normCode(a.barcode) === c) || S.articles.find(a => normCode(a.sku) === c) || null) : null; };
+/* Artikelliste: scannen → Buchungsfeld des Artikels aufklappen; unbekannt → (Admins) zuordnen oder neu anlegen */
+async function scanInStock() {
+  const code = await scanBarcode('Artikel scannen'); if (!code) return;
+  const x = findArticleByCode(code);
+  if (x) { showArticleInStock(x.id); showToast(`${x.name} – Menge eingeben und buchen`); return; }
+  if (!amAdmin()) { showToast(`Code ${code} ist keinem Artikel zugeordnet – SE oder KÖ können ihn zuordnen`); return; }
+  assignCodeDialog(code);
+}
+function showArticleInStock(id) {
+  $('stock-search').value = ''; $('stock-ort').value = ''; $('stock-kat').value = '';
+  if (S.view !== 'stock') { S.view = 'stock'; render(); }
+  S.expandedArt = id; subscribeBookings(id); renderStock();
+  const it = document.querySelector(`.art-row[data-aid="${CSS.escape(id)}"]`);
+  if (it) it.closest('.art-item').scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const q = $('qd-qty'); if (q) setTimeout(() => q.focus(), 250);
+}
+function assignCodeDialog(code) {
+  const ov = $('setup');
+  const draw = (q = '') => {
+    const list = S.articles.filter(a => !q || [a.sku, a.name, a.kat].join(' ').toLowerCase().includes(q.toLowerCase())).sort((x, y) => deSort(x.name || '', y.name || '')).slice(0, 60);
+    $('ac-list').innerHTML = list.map(a => `<button type="button" class="osp-item" data-aid="${esc(a.id)}"><span><b>${esc(a.name)}</b><small>${esc([a.sku, a.barcode ? 'hat schon Code ' + a.barcode : ''].filter(Boolean).join(' · '))}</small></span></button>`).join('') || '<p class="proto-meta">Kein Artikel gefunden.</p>';
+  };
+  ov.innerHTML = `<div class="setup-card osp-card">${cardHead}<h3>Unbekannter Code</h3>
+    <p><b class="mono">${esc(code)}</b> ist noch keinem Artikel zugeordnet. Einem vorhandenen Artikel zuordnen oder einen neuen anlegen.</p>
+    <button class="btn-big" type="button" data-n="new">+ Neuer Artikel mit diesem Code</button>
+    <div class="field" style="margin-top:12px"><input id="ac-q" placeholder="Vorhandenen Artikel suchen …" autocomplete="off"></div>
+    <div id="ac-list" class="osp-list"></div>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
+  ov.classList.remove('hidden'); draw();
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.oninput = null; };
+  ov.oninput = (e) => { if (e.target.id === 'ac-q') draw(e.target.value.trim()); };
+  ov.onclick = async (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    if (e.target.closest('[data-n="new"]')) { close(); await newArticle(code); return; }
+    const it = e.target.closest('.osp-item'); if (!it) return;
+    const a = S.articles.find(x => x.id === it.dataset.aid); if (!a) return;
+    if (a.barcode && a.barcode !== code && !(await confirmModal(`„${a.name}“ hat schon den Code ${a.barcode}. Durch ${code} ersetzen?`, 'Ersetzen', false))) return;
+    close();
+    a.barcode = code;
+    S.store.saveArticle(a.id, { barcode: code }, S.me, false).catch(err => { if (err && err.code === 'permission-denied') adminRejected(); });
+    showArticleInStock(a.id); showToast(`Code ${code} → ${a.name} gespeichert`);
+  };
+}
+
 /* ---------- Ein Artikel ---------- */
 let unsubBookings = null;
 function closeArticleSubs() { if (unsubBookings) { unsubBookings(); unsubBookings = null; } S.openArticleId = S.view === 'article' ? S.openArticleId : null; }
@@ -465,12 +592,12 @@ function openArticle(id) {
   subscribeBookings(id);
   S.view = 'article'; render(); window.scrollTo(0, 0);
 }
-async function newArticle() {
+async function newArticle(barcode = '') {
   if (!amAdmin()) return;
-  const name = await promptModal('Bezeichnung des neuen Artikels:', 'Anlegen', { value: '' });
+  const name = await promptModal(barcode ? `Bezeichnung des neuen Artikels (Code ${barcode}):` : 'Bezeichnung des neuen Artikels:', 'Anlegen', { value: '' });
   if (!name || !name.trim()) return;
   const id = S.store.newArticleId();
-  const d = { sku: '', name: name.trim(), kat: 'Verbrauchsmaterial', einheit: 'Stk.', gebinde: '', lagerort: DEFAULT_ORTE[0],
+  const d = { sku: '', barcode: barcode || '', name: name.trim(), kat: 'Verbrauchsmaterial', einheit: 'Stk.', gebinde: '', lagerort: DEFAULT_ORTE[0],
     minBestand: 0, preis: 0, notes: '', suppliers: [] };
   try {
     S.store.saveArticle(id, d, S.me, true).catch(err => { if (err && err.code === 'permission-denied') adminRejected(); });
@@ -515,6 +642,8 @@ function renderArticle() {
       ${admin ? '' : '<p class="o-locked no-print">Stammdaten ändern nur die Admins (SE, KÖ).</p>'}
       <div class="art-grid">
         <div class="o-field"><label>Art.-Nr.</label><input data-af="sku" value="${esc(x.sku)}" ${dis} placeholder="z. B. HLP-46"></div>
+        <div class="o-field"><label>Barcode / EAN</label><div class="bc-wrap"><input data-af="barcode" id="art-barcode" value="${esc(x.barcode || '')}" ${dis} placeholder="scannen oder eintippen" inputmode="numeric">
+          ${admin ? '<button class="scan-btn sm no-print" data-act="scan-art-barcode" type="button" title="Barcode scannen">📷</button>' : ''}</div></div>
         <div class="o-field art-wide"><label>Bezeichnung</label><input data-af="name" value="${esc(x.name)}" ${dis}></div>
         <div class="o-field"><label>Kategorie</label><select data-af="kat" ${dis}>${optList(kategorien(), x.kat, '+ Neue Kategorie …')}</select></div>
         <div class="o-field"><label>Lagerort</label><select data-af="lagerort" ${dis}>${optList(lagerorte(), x.lagerort, '+ Neuer Lagerort …')}</select></div>
@@ -623,7 +752,7 @@ function saveArtNow() {
   ART_FIELDS.forEach(f => { d[f] = x[f]; });
   d.minBestand = num(d.minBestand); d.preis = num(d.preis);
   d.suppliers = x.suppliers.map(s => ({ name: String(s.name || '').trim(), bestellNr: String(s.bestellNr || '').trim(), gebinde: String(s.gebinde || '').trim(), preis: num(s.preis) }));
-  ['sku', 'name', 'gebinde', 'notes'].forEach(f => { d[f] = String(d[f] || '').trim(); });
+  ['sku', 'barcode', 'name', 'gebinde', 'notes'].forEach(f => { d[f] = String(d[f] || '').trim(); });
   const local = S.articles.find(y => y.id === x.id); if (local) Object.assign(local, d);
   S.store.saveArticle(x.id, d, S.me, false)
     .then(() => { const el = $('a-saved'); if (el && !S.artDirty) el.textContent = 'gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); })
@@ -922,7 +1051,7 @@ function openOrderStockPicker(rid) {
   ov.innerHTML = `<div class="setup-card osp-card">${cardHead}
     <h3>Material aus dem Lager</h3>
     <p>Wird als Entnahme mit <b>Auftrag ${esc(o.nr)}</b> gebucht${pos ? ` und bei <b>Position ${pos}</b> unter „Material / Teile“ eingetragen` : ''}.</p>
-    <div class="field"><input id="osp-q" placeholder="Artikel suchen: Name, Art.-Nr. …" autocomplete="off"></div>
+    <div class="field bc-wrap"><input id="osp-q" placeholder="Artikel suchen: Name, Art.-Nr. …" autocomplete="off"><button class="scan-btn" type="button" data-n="scan" title="Barcode scannen">📷</button></div>
     <div id="osp-list" class="osp-list"></div>
     <form id="osp-form" class="osp-form hidden" novalidate>
       <div class="osp-sel" id="osp-sel"></div>
@@ -946,8 +1075,17 @@ function openOrderStockPicker(rid) {
   setTimeout(() => $('osp-q') && $('osp-q').focus(), 30);
   const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.oninput = null; };
   ov.oninput = (e) => { if (e.target.id === 'osp-q') list(); };
-  ov.onclick = (e) => {
+  ov.onclick = async (e) => {
     if (e.target.closest('[data-n="close"]')) { close(); return; }
+    if (e.target.closest('[data-n="scan"]')) {
+      const code = await scanBarcode('Artikel scannen'); if (!code) return;
+      const x = findArticleByCode(code);
+      if (!x) { $('osp-err').textContent = `Code ${code} ist keinem Artikel zugeordnet.`; return; }
+      if (num(x.bestand) <= 0) { $('osp-err').textContent = `${x.name}: nichts am Lager.`; return; }
+      $('osp-q').value = ''; list();
+      const b2 = ov.querySelector(`.osp-item[data-aid="${CSS.escape(x.id)}"]`); if (b2) b2.click();
+      return;
+    }
     const it = e.target.closest('.osp-item');
     if (it && !it.disabled) {
       sel = S.articles.find(x => x.id === it.dataset.aid); if (!sel) return;
@@ -2931,6 +3069,13 @@ const actions = {
     try { await S.store.deleteAkteFile(S.openVehId, f.id); showToast('Gelöscht'); } catch (e) { showToast(e.message || 'Löschen fehlgeschlagen'); } },
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
+  'scan-art-barcode': async () => {
+    if (!amAdmin() || !S.artEdit) return;
+    const code = await scanBarcode('Barcode des Artikels scannen'); if (!code) return;
+    const other = S.articles.find(a => a.id !== S.artEdit.id && normCode(a.barcode) === normCode(code));
+    if (other && !(await confirmModal(`Der Code ${code} gehört schon zu „${other.name}“. Trotzdem auch hier eintragen?`, 'Eintragen', false))) return;
+    S.artEdit.barcode = code; const i = $('art-barcode'); if (i) i.value = code; queueArtSave(); showToast('Barcode eingetragen');
+  },
   'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
   'book-in': () => doBooking('Zulauf'),
   'qbook-in': () => doBooking('Zulauf', true),
@@ -3084,6 +3229,7 @@ $('fleet-list').addEventListener('change', (e) => { if (e.target.classList.conta
 $('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.contains('fe-in') && S.fePending[e.target.dataset.vid]) saveFleetRow(e.target.dataset.vid); });
 ['fleet-grp', 'fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
+$('stock-scan').addEventListener('click', scanInStock);
 ['stock-search', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
 $('stock-ort').addEventListener('change', async (e) => {
   if (e.target.value !== '__neu__') { renderStock(); return; }
@@ -3255,6 +3401,7 @@ function applyNav(nav) {
 function openLayers() {
   let n = 0;
   if ($('confirm-modal-overlay').classList.contains('show')) n++;
+  if (!$('scan-ov').classList.contains('hidden')) n++;
   if (!$('setup').classList.contains('hidden')) n++;
   if ($('ms-monteure').classList.contains('open')) n++;
   if (window.innerWidth <= 940 && !document.querySelector('.app').classList.contains('sidebar-collapsed')) n++;
@@ -3262,6 +3409,7 @@ function openLayers() {
 }
 /* Oberste Ebene schließen; false, wenn sie nicht geschlossen werden darf */
 function closeTopLayer() {
+  if (!$('scan-ov').classList.contains('hidden')) { closeScanner(null); return true; }
   if ($('confirm-modal-overlay').classList.contains('show')) { $('confirm-modal-no').click(); return true; }
   const ov = $('setup');
   if (!ov.classList.contains('hidden')) {
@@ -3291,7 +3439,7 @@ function syncLayers() {
   }
 }
 const layerObserver = new MutationObserver(() => setTimeout(syncLayers, 0));
-[$('setup'), $('confirm-modal-overlay'), $('ms-monteure'), document.querySelector('.app')].forEach(el =>
+[$('setup'), $('scan-ov'), $('confirm-modal-overlay'), $('ms-monteure'), document.querySelector('.app')].forEach(el =>
   layerObserver.observe(el, { attributes: true, attributeFilter: ['class'] }));
 
 window.addEventListener('popstate', async (e) => {

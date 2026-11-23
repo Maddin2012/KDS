@@ -1075,3 +1075,22 @@
   html[data-theme="dark"] .order-link { background:#3b2a16; border-color:#5a3d1c }
   @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .order-link { background:#3b2a16; border-color:#5a3d1c } }
   @media (max-width:760px) { .o-svc-row { grid-template-columns:auto 1fr } .o-svc-row small { grid-column:1 / -1 } }
+  /* ---------- Barcode-Scanner ---------- */
+  .scan-btn { border:1px solid var(--line); background:var(--surface); color:var(--text); border-radius:6px; padding:0 14px; font-size:20px; line-height:1; min-height:42px; cursor:pointer }
+  .scan-btn:hover { border-color:var(--orange) } .scan-btn.sm { font-size:16px; padding:0 10px; min-height:38px }
+  .bc-wrap { display:flex; gap:6px; align-items:stretch } .bc-wrap input { flex:1; min-width:0 }
+  .scan-ov { position:fixed; inset:0; z-index:400; background:rgba(10,11,12,.86); display:flex; align-items:center; justify-content:center;
+    padding:max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)) }
+  .scan-ov.hidden { display:none }
+  .scan-card { width:min(560px, 100%); background:var(--surface); color:var(--text); border-radius:12px; overflow:hidden; display:flex; flex-direction:column }
+  .scan-head { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.08em; font-size:16px }
+  .scan-x { border:0; background:transparent; color:var(--text); font-size:20px; cursor:pointer }
+  .scan-box { position:relative; background:#000; aspect-ratio:4/3; overflow:hidden }
+  .scan-box video { width:100%; height:100%; object-fit:cover; display:block }
+  .scan-frame { position:absolute; left:10%; right:10%; top:30%; bottom:30%; border:3px solid var(--orange); border-radius:10px; box-shadow:0 0 0 2000px rgba(0,0,0,.28) }
+  .scan-frame::after { content:""; position:absolute; left:6%; right:6%; top:50%; height:2px; background:rgba(255,60,40,.85); animation:scanLine 1.6s ease-in-out infinite alternate }
+  @keyframes scanLine { from { transform:translateY(-28px) } to { transform:translateY(28px) } }
+  @media (prefers-reduced-motion: reduce) { .scan-frame::after { animation:none } }
+  .scan-msg { position:absolute; left:0; right:0; bottom:0; padding:8px 12px; background:rgba(0,0,0,.55); color:#fff; font-size:14px; text-align:center }
+  .scan-msg.err { background:#b42318 }
+  .scan-manual { display:flex; gap:8px; padding:12px 14px } .scan-manual input { flex:1; min-width:0; border:1px solid var(--line); border-radius:6px; padding:9px 10px; background:var(--surface); color:var(--text); font-family:'IBM Plex Mono',monospace }

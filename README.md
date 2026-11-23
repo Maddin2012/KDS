@@ -151,6 +151,13 @@ Ausdruck. Direkt bei einer Position geht das über **„+ Lager“** unter *Mate
 die Entnahme wird dann auch dort eingetragen. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
 Aufträgen geht das nur noch für SE und KÖ.
 
+**Barcode scannen.** In der Artikelliste neben der Suche **📷** antippen und den Barcode vor die
+Kamera halten: Beim passenden Artikel klappt sofort das Buchungsfeld auf. Unbekannte Codes können
+SE/KÖ direkt einem Artikel zuordnen oder einen neuen Artikel damit anlegen; in den Stammdaten gibt es
+das Feld **Barcode / EAN** (mit 📷). Auch beim Entnehmen im Auftrag lässt sich scannen. Erkannt werden
+EAN/UPC, Code 128/39/93, ITF, Codabar, QR und DataMatrix – auf Android/Chromebook mit dem eingebauten
+Leser, auf dem iPhone mit ZXing (vendor/zxing, Apache-2.0). Ohne Kamera kann der Code eingetippt werden.
+
 **Bestellvorschläge** (nur SE und KÖ). *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
 dem Mindestbestand mit empfohlener Menge (auffüllen auf das Doppelte des
 Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.
