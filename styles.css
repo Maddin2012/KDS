@@ -975,3 +975,8 @@
   }
   @media (min-width:761px) { .fleet-table:not(.fe-mode) td, .fleet-table:not(.fe-mode) th { padding:8px 7px; font-size:13px } }
   @media (max-width:760px) { .grp-row td { flex-direction:row !important; align-items:baseline; gap:8px } }
+  /* Fuhrpark: Spalte „Fahrzeug“ besser lesbar */
+  .fleet-table td[data-l="Fahrzeug"] b { font-family:'Barlow',system-ui,sans-serif; font-size:15px; font-weight:600; letter-spacing:.02em;
+    font-variant-numeric:tabular-nums lining-nums; color:var(--text) }
+  @media (min-width:761px) { .fleet-table:not(.fe-mode) td[data-l="Fahrzeug"] { font-size:15px } }
+  @media print { .fleet-table td[data-l="Fahrzeug"] b { font-size:10px } }
