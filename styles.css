@@ -932,3 +932,10 @@
   .btn-big.btn-danger-big { background:#b42318; color:#fff }
   .btn-big.btn-danger-big:hover { background:#8f1c13 }
   .fleet-table th.col-hl { color:var(--orange-dk); box-shadow:inset 0 -3px 0 var(--orange) }
+  /* Fuhrpark: markiertes Fahrzeug */
+  .fleet-row.sel td { background:var(--orange-lt) !important }
+  .fleet-row.sel td:first-child { box-shadow:inset 4px 0 0 var(--orange) }
+  html[data-theme="dark"] .fleet-row.sel td { background:#3b2a16 !important }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .fleet-row.sel td { background:#3b2a16 !important } }
+  @media (max-width:760px) { .fleet-row.sel { box-shadow:0 0 0 2px var(--orange) } .fleet-row.sel td:first-child { box-shadow:none } }
+  #btn-veh-edit:disabled { opacity:.5; cursor:not-allowed }

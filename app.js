@@ -34,6 +34,7 @@ const S = {
   vehicles: [],             // Fuhrpark
   articles: [],             // Lager
   openArticleId: null,
+  selVeh: null,             // im Fuhrpark markiertes Fahrzeug
   expandedArt: null,
   artEdit: null,
   artDirty: false,
@@ -980,6 +981,11 @@ function addOrderRow() {
   const all = $('view-order').querySelectorAll('textarea[data-f="text"]');
   all[all.length - 1].focus();
 }
+// Fuhrpark: Doppelklick bzw. Enter auf einer Zeile öffnet das Fahrzeug direkt
+document.addEventListener('dblclick', (e) => { const r = e.target.closest && e.target.closest('#fleet-list .fleet-row'); if (r) { S.selVeh = r.dataset.vid; openVehicle(r.dataset.vid); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fleet-row')) { S.selVeh = e.target.dataset.vid; openVehicle(e.target.dataset.vid); }
+});
 // Enter in „Arbeit“ = neue Position (Umschalt+Enter = neue Zeile im Feld)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && e.target.matches && e.target.matches('#view-order textarea[data-f="text"]')) {
@@ -1157,6 +1163,9 @@ function renderFleet() {
       : 'Fahrzeuge legen die Admins (SE, KÖ) an.'}</div>`;
     return;
   }
+  // Auswahl: Zeile antippen markiert, „Bearbeiten“ öffnet das markierte Fahrzeug
+  if (S.selVeh && !list.some(v => v.id === S.selVeh)) S.selVeh = null;
+  updateVehEditBtn();
   if (!list.length) { $('fleet-list').innerHTML = '<div class="empty-note">Kein Fahrzeug zu dieser Auswahl.</div>'; return; }
   const due = (v, f) => { const st = dueState(v[f]); return `<span class="due ${st}">${esc(fmtDay(v[f]) || '—')}</span>`; };
   const svc = (v) => { const nd = serviceDue(v.letzterService), st = dueState(nd);
@@ -1166,7 +1175,7 @@ function renderFleet() {
     <table class="fleet-table">
       <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
       <tbody>${list.map(v => `
-        <tr class="fleet-row" data-vid="${esc(v.id)}" tabindex="0">
+        <tr class="fleet-row${S.selVeh === v.id ? ' sel' : ''}" data-vid="${esc(v.id)}" tabindex="0" aria-selected="${S.selVeh === v.id}">
           <td data-l="ID" class="mono"><b>${esc(v.code || '—')}</b></td>
           <td data-l="Fahrzeug"><b>${esc(v.typ || '—')}</b>${v._pending ? ' <span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</td>
           <td data-l="Kennzeichen" class="mono">${esc(v.kz || '—')}</td>
@@ -1178,7 +1187,21 @@ function renderFleet() {
         </tr>`).join('')}
       </tbody>
     </table>
-    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen für Details${amAdmin() ? ' und zum Bearbeiten' : ''}.</p>`;
+    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen zum Markieren, dann „${amAdmin() ? 'Bearbeiten' : 'Details'}“ (oder doppelt antippen).</p>`;
+}
+function updateVehEditBtn() {
+  const b = $('btn-veh-edit'); if (!b) return;
+  const v = S.selVeh && S.vehicles.find(x => x.id === S.selVeh);
+  b.disabled = !v;
+  b.textContent = (amAdmin() ? '✎ Bearbeiten' : 'Details') + (v ? ': ' + (v.code || v.typ || '') : '');
+  b.title = v ? vehicleLabel(v) : 'Zuerst ein Fahrzeug in der Liste antippen';
+}
+function selectVehicle(id) {
+  S.selVeh = S.selVeh === id ? null : id;
+  document.querySelectorAll('#fleet-list .fleet-row').forEach(r => {
+    const on = r.dataset.vid === S.selVeh; r.classList.toggle('sel', on); r.setAttribute('aria-selected', on);
+  });
+  updateVehEditBtn();
 }
 
 /* Fahrzeug anzeigen / bearbeiten (bearbeiten nur Admins) */
@@ -2347,6 +2370,7 @@ const actions = {
     showToast(`„${title}“ kopiert – in einer anderen Kategorie einfügbar`);
   },
   'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
+  'edit-vehicle': () => { if (S.selVeh && S.vehicles.some(v => v.id === S.selVeh)) openVehicle(S.selVeh); },
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
   'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
@@ -2447,7 +2471,7 @@ document.addEventListener('click', (e) => {
   const orow = e.target.closest('.order-row');
   if (orow) { openOrder(orow.dataset.oid); return; }
   const vrow = e.target.closest('.fleet-row');
-  if (vrow) { openVehicle(vrow.dataset.vid); return; }
+  if (vrow) { selectVehicle(vrow.dataset.vid); return; }
   const row = e.target.closest('.arch-row');
   if (row) { S.openId = row.dataset.pid; S.view = 'protocol'; render(); window.scrollTo(0, 0); return; }
 
