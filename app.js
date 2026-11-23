@@ -357,10 +357,11 @@ const recQty = (x) => Math.max(1, num(x.minBestand) * 2 - num(x.bestand));
 
 function renderStock() {
   // Filter-Auswahl befüllen (Auswahl behalten)
-  const fill = (id, list, all) => { const sel = $(id), cur = sel.value;
-    sel.innerHTML = `<option value="">${all}</option>` + list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  const fill = (id, list, all, extra = '') => { const sel = $(id), cur = sel.value;
+    sel.innerHTML = `<option value="">${all}</option>` + list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('') + extra;
     sel.value = list.includes(cur) ? cur : ''; };
-  fill('stock-ort', [...new Set(S.articles.map(x => x.lagerort).filter(Boolean))].sort(deSort), 'Alle Lagerorte');
+  // alle bekannten Lagerorte (auch neu angelegte ohne Artikel); Admins können hier einen neuen anlegen
+  fill('stock-ort', lagerorte(), 'Alle Lagerorte', amAdmin() ? '<option value="__neu__">+ Neuer Lagerort …</option>' : '');
   fill('stock-kat', [...new Set(S.articles.map(x => x.kat).filter(Boolean))].sort(deSort), 'Alle Kategorien');
   if (S.lagerError) {
     $('stock-summary').innerHTML = '';
@@ -2652,7 +2653,22 @@ $('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.con
 ['fleet-grp', 'fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
 $('orders-status').addEventListener('change', renderOrders);
-['stock-search', 'stock-ort', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
+['stock-search', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
+$('stock-ort').addEventListener('change', async (e) => {
+  if (e.target.value !== '__neu__') { renderStock(); return; }
+  e.target.value = '';
+  if (!amAdmin()) return;
+  const v = ((await promptModal('Name des neuen Lagerorts:', 'Hinzufügen')) || '').trim();
+  if (!v) { renderStock(); return; }
+  if (lagerorte().some(o => o.toLowerCase() === v.toLowerCase())) { showToast(`Lagerort „${v}“ gibt es schon`); }
+  else {
+    const list = [...new Set([...(S.lagerCfg.lagerorte || []), v])];
+    S.lagerCfg = { ...S.lagerCfg, lagerorte: list };
+    try { await S.store.saveLagerCfg({ lagerorte: list }); showToast(`Lagerort „${v}“ angelegt`); }
+    catch (err) { showToast('Lagerort konnte nicht gespeichert werden'); }
+  }
+  renderStock(); $('stock-ort').value = lagerorte().find(o => o.toLowerCase() === v.toLowerCase()) || ''; renderStock();
+});
 
 /* Status-Logik i.O. / n.i.O. / behoben
    i.O. schließt n.i.O. und behoben aus; behoben setzt n.i.O.; n.i.O. abwählen nimmt behoben weg. */
