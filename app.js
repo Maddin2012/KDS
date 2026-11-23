@@ -839,7 +839,10 @@ function renderOrder() {
       <div class="ms-print" id="o-crew-print"></div>
     </div>
     <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
-      src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>`;
+      src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>
+    <div class="o-done no-print">
+      <button class="btn-big o-done-btn" data-act="order-done" type="button">${locked ? 'Schließen' : S.orderIsNew === o.id ? '✓ Auftrag anlegen' : '✓ Auftrag speichern'}</button>
+    </div>`;
   renderOrderCrew();
   renderOrderStock();
   if (locked) lockOrderView();
@@ -1112,7 +1115,7 @@ function openNewOrder(pre = {}) {
       S.orders.unshift({ ...o });
       S.store.saveOrder(o.id, pickOrder(o), S.me).catch(() => showToast('Auftrag konnte nicht gespeichert werden'));
       close();
-      S.openOrderId = o.id; S.orderEdit = o; S.orderDirty = false; S.view = 'order'; render(); window.scrollTo(0, 0);
+      S.openOrderId = o.id; S.orderEdit = o; S.orderDirty = false; S.orderIsNew = o.id; S.view = 'order'; render(); window.scrollTo(0, 0);
       showToast('Auftrag ' + o.nr + ' angelegt');
     } catch (err) {
       console.error(err);
@@ -2781,6 +2784,15 @@ const actions = {
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
   'order-stock-del': (btn) => removeOrderStock(btn.dataset.mid),
+  'order-done': () => {
+    const o = S.orderEdit; if (!o) return;
+    const locked = orderLocked(o), isNew = S.orderIsNew === o.id;
+    if (!locked) { S.orderDirty = true; saveOrderNow(); }
+    S.orderIsNew = null;
+    if (!locked) showToast(`Auftrag ${o.nr} ${isNew ? 'angelegt' : 'gespeichert'}${navigator.onLine ? '' : ' – wird übertragen, sobald Internet da ist'}`);
+    if ((history.state || {}).idx > 0) history.back();          // zurück, wo man herkam (Liste oder Fahrzeugakte)
+    else { S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); }
+  },
   'back-orders': () => { flushOrderSave(); S.view = 'orders'; S.openOrderId = null; render(); window.scrollTo(0, 0); },
   'order-add-row': () => addOrderRow(),
   'order-del-row': (btn) => {

@@ -1051,3 +1051,7 @@
     .ak-table td::before { content:attr(data-l); min-width:110px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.08em; font-size:11px; color:var(--steel); font-weight:700 }
     .ak-title h3 { font-size:19px }
   }
+  /* Auftrag: Abschluss-Knopf unten */
+  .o-done { display:flex; justify-content:flex-end; margin:6px 0 24px }
+  .o-done-btn { width:auto !important; min-width:260px; background:var(--orange); color:var(--black) }
+  @media (max-width:760px) { .o-done-btn { width:100% !important } }
