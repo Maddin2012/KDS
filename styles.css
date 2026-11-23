@@ -1064,3 +1064,14 @@
   .o-mat-lager.hidden { display:none }
   .nav-item.nav-new { color:var(--orange); font-weight:700 }
   .nav-item.nav-new:hover { background:rgba(255,131,0,.12) }
+  /* Serviceliste zum Auftrag */
+  .o-svc-list { display:flex; flex-direction:column; gap:6px }
+  .o-svc-row { display:grid; grid-template-columns:auto auto 1fr; gap:10px; align-items:center; text-align:left; width:100%; border:1px solid var(--line);
+    background:var(--surface); color:var(--text); border-radius:8px; padding:10px 12px }
+  .o-svc-row:hover { border-color:var(--orange) } .o-svc-row small { color:var(--steel) }
+  .order-link { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:var(--orange-lt); border:1px solid var(--orange-bd);
+    border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:14px; color:var(--text) }
+  .order-link.hidden { display:none }
+  html[data-theme="dark"] .order-link { background:#3b2a16; border-color:#5a3d1c }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .order-link { background:#3b2a16; border-color:#5a3d1c } }
+  @media (max-width:760px) { .o-svc-row { grid-template-columns:auto 1fr } .o-svc-row small { grid-column:1 / -1 } }

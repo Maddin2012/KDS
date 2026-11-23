@@ -255,6 +255,7 @@ function renderChrome() {
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
   $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
+  renderOrderLink();
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
 
@@ -830,6 +831,12 @@ function renderOrder() {
     </div>
 
     <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Serviceliste</span></div>
+        <button class="btn-sec no-print" data-act="order-add-service" type="button" id="o-svc-btn">📋 Serviceliste hinzufügen</button></div>
+      <div id="o-svc"></div>
+    </div>
+
+    <div class="box">
       <div class="sec-title"><div class="title-left"><span>Bemerkungen / Mängel</span></div></div>
       <textarea class="o-ta o-notes" data-f="notes" rows="3" placeholder="Auffälligkeiten, offene Punkte, Folgeauftrag …">${esc(o.notes)}</textarea>
     </div>
@@ -846,6 +853,7 @@ function renderOrder() {
     </div>`;
   renderOrderCrew();
   renderOrderStock();
+  renderOrderService();
   if (locked) lockOrderView();
   renderChrome();                       // erst sichtbar machen, dann Höhen berechnen
   sizeOrderTextareas();
@@ -854,7 +862,7 @@ function renderOrder() {
 function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
-  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
 /* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
@@ -997,6 +1005,74 @@ async function removeOrderStock(mid) {
     saveOrderImmediately(); renderOrderStock();
     showToast(art ? 'Zurück ins Lager gebucht' : 'Aus dem Auftrag entfernt');
   } catch (err) { showToast((err && err.message) || 'Rückbuchung fehlgeschlagen'); }
+}
+
+/* ---------- Serviceliste zum Auftrag ---------- */
+/* Fahrzeuggruppe (Fuhrpark) → Kategorie der Serviceliste */
+const GROUP_CAT = { krane: 'Kran', ladekrane: 'Ladekran', zugmaschinen: 'LKW', bf3: 'BF3', pkw: 'PKW' };
+const orderVehicle = (o) => S.vehicles.find(v => v.id === o.vehId) || (o.code ? S.vehicles.find(v => v.code === o.code) : null) || null;
+const catForVehicle = (v) => v ? GROUP_CAT[String(v.gruppe || '').toLowerCase()] || null : null;
+const draftHasData = (d) => !!(d && ((d.header && String(d.header.fId || '').trim()) || Object.keys(d.status || {}).length || Object.values(d.notes || {}).some(Boolean)));
+/* Laufende (noch nicht abgeschlossene) Servicelisten dieses Geräts zu einem Auftrag */
+const draftsForOrder = (oid) => CATEGORIES.filter(c => { const d = c === S.cat ? draft : loadDraft(c); return d.header && d.header.orderId === oid; });
+function renderOrderService() {
+  const o = S.orderEdit, box = $('o-svc'); if (!box || !o) return;
+  const done = S.protocols.filter(p => p.header && p.header.orderId === o.id).sort((x, y) => (y.ts || 0) - (x.ts || 0));
+  const running = draftsForOrder(o.id);
+  const cat = catForVehicle(orderVehicle(o));
+  const btn = $('o-svc-btn'); if (btn) btn.textContent = '📋 Serviceliste hinzufügen' + (cat ? ` (${cat})` : '');
+  box.innerHTML = (running.length || done.length) ? `<div class="o-svc-list">
+      ${running.map(c => `<button type="button" class="o-svc-row" data-act="order-open-draft" data-cat="${esc(c)}">
+        <span class="badge pend">in Arbeit</span><b>Serviceliste ${esc(c)}</b><small>auf diesem Gerät, noch nicht abgeschlossen – weiter ausfüllen</small></button>`).join('')}
+      ${done.map(p => { const st = protoStats(p); return `<button type="button" class="o-svc-row" data-act="order-open-proto" data-pid="${esc(p.id)}">
+        ${st.open ? `<span class="badge bad">${st.open} n.i.O.</span>` : '<span class="badge ok">abgeschlossen</span>'}<b>Serviceliste ${esc(p.category)}</b>
+        <small>${esc(fmtDate(p))} · ${esc((p.monteure || []).join(', ') || p.closedBy || '')}</small></button>`; }).join('')}
+    </div>` : `<p class="proto-meta">Noch keine Serviceliste zu diesem Auftrag.${cat ? '' : ' Für die Fahrzeuggruppe gibt es keine feste Liste – die Kategorie wird beim Hinzufügen gewählt.'}</p>`;
+}
+function pickCategory(suggest) {
+  return new Promise((resolve) => {
+    const ov = $('setup');
+    ov.innerHTML = `<div class="setup-card">${cardHead}<h3>Welche Serviceliste?</h3>
+      <p>Für dieses Fahrzeug ist keine Liste fest zugeordnet. Bitte die passende wählen.</p>
+      <div class="set-list">${CATEGORIES.map(c => `<button class="set-btn" type="button" data-c="${esc(c)}">Serviceliste ${esc(c)}${c === suggest ? ' <small>vorgeschlagen</small>' : ''}</button>`).join('')}</div>
+      <div class="setup-back"><button class="link-btn" data-c="" type="button">Abbrechen</button></div></div>`;
+    ov.classList.remove('hidden');
+    ov.onclick = (e) => { const b = e.target.closest('[data-c]'); if (!b) return; ov.classList.add('hidden'); ov.onclick = null; resolve(b.dataset.c || null); };
+  });
+}
+async function addServiceToOrder() {
+  const o = S.orderEdit; if (!o || orderLocked(o)) return;
+  const v = orderVehicle(o);
+  let cat = catForVehicle(v);
+  if (!cat) { cat = await pickCategory(); if (!cat) return; }
+  flushOrderSave(); flushTemplateSave();
+  const cur = cat === S.cat ? draft : loadDraft(cat);
+  if (cur.header && cur.header.orderId === o.id) { openOrderDraft(cat); return; }      // läuft schon → weiter ausfüllen
+  if (draftHasData(cur) && !(await confirmModal(`In der Serviceliste ${cat} sind auf diesem Gerät schon Eingaben${cur.header.fId ? ` für „${cur.header.fId}“` : ''}, die noch nicht abgeschlossen sind. Verwerfen und neu für diesen Auftrag beginnen?`, 'Neu beginnen'))) return;
+  const d = emptyDraft();
+  d.header = { ...d.header, fId: v ? vehicleLabel(v) : (o.fahrzeug || o.code || ''), fKm: o.km || '', fOw: o.ow || '', fUw: o.uw || '', fDate: o.datum || todayIso(),
+    orderId: o.id, orderNr: o.nr };
+  if (v) Object.assign(d.header, { vehId: v.id, kz: v.kz || '', werk: v.werk || '', typ: v.typ || '' });
+  d.monteure = [...(o.crew || [])];
+  lsSet(draftKey(cat), JSON.stringify(d));
+  openOrderDraft(cat);
+  showToast(`Serviceliste ${cat} für Auftrag ${o.nr} begonnen`);
+}
+function openOrderDraft(cat) {
+  flushOrderSave();
+  if (S.edit) { S.edit = false; S.editTpl = null; }
+  S.cat = cat; lsSet('kds_cat', cat); draft = loadDraft(cat);
+  S.view = 'list'; render(); window.scrollTo(0, 0);
+}
+/* Hinweis über der Serviceliste, wenn sie zu einem Auftrag gehört */
+function renderOrderLink() {
+  const el = $('order-link'); if (!el) return;
+  const oid = S.view === 'list' && !S.edit && draft.header && draft.header.orderId;
+  const o = oid && S.orders.find(x => x.id === oid);
+  el.classList.toggle('hidden', !oid);
+  if (!oid) { el.innerHTML = ''; return; }
+  el.innerHTML = `<span>📋 Gehört zu <b>Auftrag ${esc(o ? o.nr : draft.header.orderNr || '')}</b> – beim Abschließen wird sie dort abgelegt.</span>
+    ${o ? `<button class="btn-sec" data-act="order-link-open" type="button">← Zum Auftrag</button>` : ''}`;
 }
 
 function autoSize(ta) {
@@ -1792,6 +1868,10 @@ async function closeProtocol() {
   if (veh && (!veh.letzterService || day > veh.letzterService)) S.store.setLastService(veh.id, day, S.me).catch(() => {});
   draft = emptyDraft();
   saveDraft();
+  const oid = p.header.orderId;
+  if (oid && S.orders.some(x => x.id === oid)) {          // Serviceliste gehört zu einem Auftrag → dorthin zurück
+    openOrder(oid); showToast(`Serviceliste ${p.category} abgeschlossen und im Auftrag abgelegt`); return;
+  }
   render();
   window.scrollTo(0, 0);
   showToast('Protokoll gespeichert – zu finden im Archiv');
@@ -2800,6 +2880,10 @@ const actions = {
   'add-supplier': () => { if (!amAdmin()) return; S.artEdit.suppliers.push({ name: '', bestellNr: '', gebinde: '', preis: '' }); renderArticle(); queueArtSave(); },
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
+  'order-add-service': () => addServiceToOrder(),
+  'order-open-draft': (btn) => openOrderDraft(btn.dataset.cat),
+  'order-open-proto': (btn) => { flushOrderSave(); S.openId = btn.dataset.pid; S.view = 'protocol'; render(); window.scrollTo(0, 0); },
+  'order-link-open': () => { const oid = draft.header && draft.header.orderId; if (oid && S.orders.some(x => x.id === oid)) openOrder(oid); },
   'order-stock-row': (btn) => { const tr = btn.closest('tr[data-rid]'); if (tr) openOrderStockPicker(tr.dataset.rid); },
   'order-stock-del': (btn) => removeOrderStock(btn.dataset.mid),
   'order-done': () => {

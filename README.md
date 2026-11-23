@@ -135,6 +135,12 @@ darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
   (gezählten Bestand festlegen) und Löschen: nur Admins. Neue Kategorien und
   Lagerorte legen Admins direkt in der Auswahl an („+ Neue …“).
 
+**Serviceliste zum Auftrag.** Im Auftrag **„📋 Serviceliste hinzufügen“**: Die passende Liste
+kommt automatisch nach der Fahrzeuggruppe (Krane → Kran, Ladekrane → Ladekran,
+Zugmaschinen → LKW, BF3 → BF3, PKW → PKW; sonst wird sie gewählt). Fahrzeug, Km, Stunden,
+Datum und Mitarbeiter werden aus dem Auftrag übernommen. Beim **Abschließen** landet die Liste
+im Archiv **und** im Auftrag, die App springt zurück in den Auftrag.
+
 **Material aus dem Werkstattauftrag abbuchen.** Im Auftrag unter *Material aus dem
 Lager* → **„+ Aus Lager entnehmen“** → Artikel suchen und antippen → Menge →
 **Entnehmen**. Das wird als Entnahme mit der Auftragsnummer gebucht (steht so in der
