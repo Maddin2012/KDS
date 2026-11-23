@@ -757,7 +757,8 @@ function orderRowHtml(r, i) {
   return `<tr data-rid="${esc(r.id)}" class="${r.done ? 'is-done' : ''}">
     <td class="pos">${String(i + 1).padStart(2, '0')}</td>
     <td><textarea class="o-ta" data-f="text" rows="1" placeholder="z. B. Hydrauliköl gewechselt, Filter erneuert">${esc(r.text)}</textarea></td>
-    <td><textarea class="o-ta" data-f="mat" rows="1" placeholder="Teile-Nr. / Menge">${esc(r.mat)}</textarea></td>
+    <td><div class="o-mat"><textarea class="o-ta" data-f="mat" rows="1" placeholder="Teile-Nr. / Menge">${esc(r.mat)}</textarea>
+      <button class="o-mat-lager no-print" data-act="order-stock-row" type="button" title="Material aus dem Lager entnehmen und hier eintragen">+ Lager</button></div></td>
     <td><input class="o-h" data-f="h" inputmode="decimal" placeholder="0,0" value="${esc(r.h)}"></td>
     <td class="center"><input type="checkbox" class="chk-status" data-f="done" ${r.done ? 'checked' : ''} aria-label="erledigt"></td>
     <td class="center no-print"><button class="btn-del-row" data-act="order-del-row" title="Position löschen">✕</button></td>
@@ -853,7 +854,7 @@ function renderOrder() {
 function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
-  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
 /* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
@@ -886,27 +887,30 @@ function renderOrderStock() {
   if (!o.lager.length) { box.innerHTML = '<p class="proto-meta">Noch kein Material aus dem Lager entnommen.</p>'; return; }
   const locked = orderLocked(o);
   box.innerHTML = `<table class="service-table ol-table">
-    <thead><tr><th>Art.-Nr.</th><th>Artikel</th><th>Menge</th><th>Entnommen</th><th class="col-act no-print"></th></tr></thead>
-    <tbody>${o.lager.map(m => `<tr>
+    <thead><tr><th>Pos.</th><th>Art.-Nr.</th><th>Artikel</th><th>Menge</th><th>Entnommen</th><th class="col-act no-print"></th></tr></thead>
+    <tbody>${o.lager.map(m => { const pi = m.rid ? o.rows.findIndex(r => r.id === m.rid) : -1; return `<tr>
+      <td data-l="Pos." class="mono">${pi >= 0 ? String(pi + 1).padStart(2, '0') : '—'}</td>
       <td data-l="Art.-Nr." class="mono">${esc(m.sku || '—')}</td>
       <td data-l="Artikel"><b>${esc(m.name)}</b></td>
       <td data-l="Menge" class="mono">${esc(fmtNum(m.menge))} ${esc(m.einheit || '')}</td>
       <td data-l="Entnommen">${esc(new Date(m.ts || 0).toLocaleDateString('de-DE'))} · ${esc(m.von || '')}</td>
       <td class="col-act no-print">${locked ? '' : `<button class="btn-del-row" data-act="order-stock-del" data-mid="${esc(m.id)}" title="Zurück ins Lager buchen">✕</button>`}</td>
-    </tr>`).join('')}</tbody></table>`;
+    </tr>`; }).join('')}</tbody></table>`;
 }
 const orderBookingText = (o) => 'Auftrag ' + o.nr + ([o.code, o.fahrzeug].filter(Boolean).length ? ' · ' + [o.code, o.fahrzeug].filter(Boolean).join(' ') : '');
 function saveOrderImmediately() { S.orderDirty = true; saveOrderNow(); }
 
 /* Auswahl: Artikel suchen → Menge → als Entnahme buchen und im Auftrag festhalten */
-function openOrderStockPicker() {
+function openOrderStockPicker(rid) {
   const o = S.orderEdit; if (!o || orderLocked(o)) return;
+  const row = rid ? o.rows.find(r => r.id === rid) : null;
+  const pos = row ? String(o.rows.indexOf(row) + 1).padStart(2, '0') : '';
   if (S.lagerError) { showToast('Das Lager ist noch nicht verfügbar'); return; }
   const ov = $('setup');
   let sel = null;
   ov.innerHTML = `<div class="setup-card osp-card">${cardHead}
     <h3>Material aus dem Lager</h3>
-    <p>Wird als Entnahme mit <b>Auftrag ${esc(o.nr)}</b> gebucht.</p>
+    <p>Wird als Entnahme mit <b>Auftrag ${esc(o.nr)}</b> gebucht${pos ? ` und bei <b>Position ${pos}</b> unter „Material / Teile“ eingetragen` : ''}.</p>
     <div class="field"><input id="osp-q" placeholder="Artikel suchen: Name, Art.-Nr. …" autocomplete="off"></div>
     <div id="osp-list" class="osp-list"></div>
     <form id="osp-form" class="osp-form hidden" novalidate>
@@ -954,7 +958,15 @@ function openOrderStockPicker() {
     try {
       const neu = await S.store.book(sel.id, { typ: 'Entnahme', menge: qty, grund: orderBookingText(o) }, S.me);
       if (S.orderEdit && S.orderEdit.id === o.id) {
-        S.orderEdit.lager.push({ id: newId(), aid: sel.id, name: sel.name || '', sku: sel.sku || '', einheit: sel.einheit || '', menge: qty, ts: Date.now(), von: S.me || '' });
+        const entry = { id: newId(), aid: sel.id, name: sel.name || '', sku: sel.sku || '', einheit: sel.einheit || '', menge: qty, ts: Date.now(), von: S.me || '' };
+        const r = rid && S.orderEdit.rows.find(x => x.id === rid);
+        if (r) {   // auch bei der Position unter „Material / Teile“ eintragen
+          entry.rid = rid;
+          entry.matText = [sel.sku, sel.name].filter(Boolean).join(' ') + ' – ' + fmtNum(qty) + ' ' + (sel.einheit || '');
+          r.mat = [String(r.mat || '').trim(), entry.matText].filter(Boolean).join('\n');
+          const ta = $('view-order').querySelector(`tr[data-rid="${rid}"] textarea[data-f="mat"]`); if (ta) { ta.value = r.mat; autoSize(ta); }
+        }
+        S.orderEdit.lager.push(entry);
         saveOrderImmediately(); renderOrderStock();
       }
       close();
@@ -977,6 +989,11 @@ async function removeOrderStock(mid) {
     if (art) await S.store.book(m.aid, { typ: 'Zulauf', menge: num(m.menge), grund: 'Rückgabe aus ' + orderBookingText(o) }, S.me);
     const cur = S.orderEdit && S.orderEdit.id === o.id ? S.orderEdit : o;
     cur.lager = cur.lager.filter(x => x.id !== mid);
+    const r = m.rid && cur.rows.find(x => x.id === m.rid);
+    if (r && m.matText) {   // Eintrag bei der Position wieder herausnehmen
+      r.mat = String(r.mat || '').split('\n').filter((l, i, arr) => l !== m.matText || arr.indexOf(m.matText) !== i).join('\n');
+      const ta = $('view-order').querySelector(`tr[data-rid="${m.rid}"] textarea[data-f="mat"]`); if (ta) { ta.value = r.mat; autoSize(ta); }
+    }
     saveOrderImmediately(); renderOrderStock();
     showToast(art ? 'Zurück ins Lager gebucht' : 'Aus dem Auftrag entfernt');
   } catch (err) { showToast((err && err.message) || 'Rückbuchung fehlgeschlagen'); }
@@ -2783,6 +2800,7 @@ const actions = {
   'add-supplier': () => { if (!amAdmin()) return; S.artEdit.suppliers.push({ name: '', bestellNr: '', gebinde: '', preis: '' }); renderArticle(); queueArtSave(); },
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
+  'order-stock-row': (btn) => { const tr = btn.closest('tr[data-rid]'); if (tr) openOrderStockPicker(tr.dataset.rid); },
   'order-stock-del': (btn) => removeOrderStock(btn.dataset.mid),
   'order-done': () => {
     const o = S.orderEdit; if (!o) return;

@@ -139,7 +139,8 @@ darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
 Lager* → **„+ Aus Lager entnehmen“** → Artikel suchen und antippen → Menge →
 **Entnehmen**. Das wird als Entnahme mit der Auftragsnummer gebucht (steht so in der
 Lager-Historie) und im Auftrag mit Menge, Datum und Kürzel aufgelistet – auch im
-Ausdruck. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
+Ausdruck. Direkt bei einer Position geht das über **„+ Lager“** unter *Material / Teile*:
+die Entnahme wird dann auch dort eingetragen. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
 Aufträgen geht das nur noch für SE und KÖ.
 
 **Bestellvorschläge** (nur SE und KÖ). *Lager* → **Bestellvorschläge**: alle Artikel am oder unter

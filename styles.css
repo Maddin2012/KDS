@@ -1055,3 +1055,10 @@
   .o-done { display:flex; justify-content:flex-end; margin:6px 0 24px }
   .o-done-btn { width:auto !important; min-width:260px; background:var(--orange); color:var(--black) }
   @media (max-width:760px) { .o-done-btn { width:100% !important } }
+  /* Auftrag: „+ Lager“ bei Material / Teile */
+  .o-mat { display:flex; flex-direction:column; gap:3px; align-items:flex-start }
+  .o-mat .o-ta { width:100% }
+  .o-mat-lager { border:1px dashed var(--orange-bd); background:transparent; color:var(--orange-dk); border-radius:4px; padding:2px 7px;
+    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.05em; text-transform:uppercase; font-size:11px }
+  .o-mat-lager:hover { background:var(--orange-lt); border-style:solid }
+  .o-mat-lager.hidden { display:none }
