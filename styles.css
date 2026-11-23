@@ -952,3 +952,26 @@
   .fe-mode .fleet-row { cursor:default }
   html[data-theme="dark"] .fe-bar { background:#3b2a16; border-color:#5a3d1c }
   @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .fe-bar { background:#3b2a16; border-color:#5a3d1c } }
+  /* Fuhrpark: Gruppen und breite Tabelle */
+  .fleet-scroll { overflow-x:auto; border-radius:8px }
+  .fleet-table td.fin { font-size:12px; letter-spacing:-.01em }
+  .fleet-table th, .fleet-table td { white-space:nowrap }
+  .fleet-table td[data-l="Fahrer"], .fleet-table td[data-l="Fahrzeug"] { white-space:normal; min-width:110px }
+  .grp-row td { background:var(--black) !important; color:#fff; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;
+    letter-spacing:.1em; font-weight:700; font-size:13px; padding:7px 10px !important }
+  .grp-row td small { color:var(--orange); margin-left:6px; font-size:12px }
+  .fe-mode .fe-in[data-fe="fin"] { min-width:150px } .fe-mode .fe-in[data-fe="typ"] { min-width:130px } .fe-mode .fe-in[data-fe="fahrer"] { min-width:120px }
+  .fe-mode .fe-in[type="date"] { min-width:125px }
+  @media (max-width:760px) {
+    .fleet-scroll { overflow:visible }
+    .fleet-table th, .fleet-table td { white-space:normal }
+    .grp-row { margin:14px 0 6px !important; box-shadow:none !important; background:transparent !important }
+    .grp-row td { border-radius:6px }
+  }
+  @media print {
+    .fleet-scroll { overflow:visible }
+    .fleet-table th, .fleet-table td { white-space:normal; font-size:9px !important; padding:3px 4px !important }
+    .grp-row td { background:#ddd !important; color:#000 }
+  }
+  @media (min-width:761px) { .fleet-table:not(.fe-mode) td, .fleet-table:not(.fe-mode) th { padding:8px 7px; font-size:13px } }
+  @media (max-width:760px) { .grp-row td { flex-direction:row !important; align-items:baseline; gap:8px } }

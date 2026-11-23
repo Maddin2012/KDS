@@ -440,6 +440,21 @@ export function createCloudStore(cfg) {
       return track(setDoc(ref, { ...data, updatedBy: by || '', updatedAt: serverTimestamp() })).then(() => ref.id);
     },
     deleteVehicle(id) { return track(deleteDoc(doc(db, 'workshops', wid, 'fahrzeuge', id))); },
+    /* Ganzen Fuhrpark ersetzen (Excel-Import, nur Admins): alle Fahrzeuge löschen, neue anlegen */
+    async replaceFleet(list, by) {
+      if (!navigator.onLine) throw new Error('Dafür wird Internet gebraucht.');
+      const old = await getDocs(sub('fahrzeuge'));
+      const ops = [];
+      old.forEach(d => ops.push((b) => b.delete(d.ref)));
+      list.forEach(v => { const ref = doc(sub('fahrzeuge')); ops.push((b) => b.set(ref, { ...v, updatedBy: by || '', updatedAt: serverTimestamp() })); });
+      for (let i = 0; i < ops.length; i += 400) {           // Firestore: höchstens 500 Schreibvorgänge je Sammelbuchung
+        const b = writeBatch(db);
+        ops.slice(i, i + 400).forEach(f => f(b));
+        try { await withTimeout(b.commit(), 30000, 'Keine Verbindung zur Datenbank.'); }
+        catch (e) { if (e && e.code === 'permission-denied') throw new Error('Keine Berechtigung – bitte als Admin anmelden.'); throw e; }
+      }
+      return { deleted: old.size, added: list.length };
+    },
     /* „Letzter Service“ darf jedes Mitglied setzen (beim Abschluss einer Serviceliste) */
     setLastService(id, date, by) {
       return track(updateDoc(doc(db, 'workshops', wid, 'fahrzeuge', id), { letzterService: date, letzterServiceVon: by || '' }));

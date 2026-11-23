@@ -193,7 +193,47 @@ export function legacyFleet(store = browserStore) {
 }
 
 /* Felder eines Fahrzeugs (Fuhrpark) */
-export const VEHICLE_FIELDS = ['code', 'typ', 'werk', 'kz', 'baujahr', 'fin', 'uvv', 'hu', 'sp', 'letzterService'];
+export const VEHICLE_FIELDS = ['gruppe', 'code', 'hersteller', 'typ', 'kz', 'fahrer', 'fin', 'werk', 'baujahr', 'uvv', 'hu', 'sp', 'letzterService'];
+/* Fahrzeuggruppen in der Reihenfolge der Excel-Fahrzeugliste; weitere Gruppen folgen alphabetisch */
+export const FLEET_GROUPS = ['Krane', 'Ladekrane', 'Zugmaschinen', 'BF3', 'Auflieger', 'PKW', 'Stapler'];
+
+/* Excel-Fahrzeugliste („Fz.-Ident-Nr.“) einlesen. rows = Zeilen als Textlisten (wie angezeigt).
+   Gruppen-Zeilen (nur erste Zelle gefüllt, z. B. „KRANE“) setzen die Gruppe für die folgenden
+   Fahrzeuge; Kopfzeilen („Id-Nr. | Hersteller | …“) legen die Spalten fest. */
+export function parseFleetRows(rows) {
+  const clean = (v) => { const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^x+$/i.test(s) ? '' : s; };
+  const groupName = (s) => {
+    const known = FLEET_GROUPS.find(g => g.toLowerCase() === s.toLowerCase());
+    if (known) return known;
+    return /^[A-ZÄÖÜ]{4,}$/.test(s) ? s.charAt(0) + s.slice(1).toLowerCase() : s;
+  };
+  const COLS = { hersteller: /hersteller/i, typ: /^fahrzeug$/i, kz: /kennzeichen/i, fahrer: /fahrer/i, fin: /fahrgestell|fin/i, werk: /werk/i, baujahr: /jahr/i };
+  let map = { hersteller: 1, typ: 2, kz: 3, fahrer: 4, fin: 5, werk: 6, baujahr: 7 };
+  let group = '';
+  const out = [], seen = new Set();
+  for (const raw of rows) {
+    const r = (raw || []).map(clean);
+    if (!r.some(Boolean)) continue;
+    if (/^id-?\s*nr/i.test(r[0])) {                       // Kopfzeile → Spalten zuordnen
+      const m = {};
+      Object.entries(COLS).forEach(([k, re]) => { const i = r.findIndex((c, j) => j > 0 && re.test(c)); if (i > 0) m[k] = i; });
+      if (m.typ !== undefined) map = { ...map, ...m };
+      continue;
+    }
+    const filled = r.filter(Boolean).length;
+    if (/^\d{1,5}$/.test(r[0]) && filled > 1) {              // Fahrzeug
+      if (seen.has(r[0])) continue;
+      seen.add(r[0]);
+      const v = { gruppe: group, code: r[0] };
+      Object.entries(map).forEach(([k, i]) => { v[k] = r[i] || ''; });
+      v.werk = v.werk.replace(/\.0$/, ''); v.baujahr = v.baujahr.replace(/\.0$/, '');
+      out.push(v);
+    } else if (filled === 1 && r[0] && !/^\d/.test(r[0]) && !/liste$/i.test(r[0])) {
+      group = groupName(r[0]);                              // Gruppen-Überschrift
+    }
+  }
+  return out;
+}
 export const vehicleLabel = (v) => [v.code, v.typ].filter(Boolean).join(' · ');
 
 export function migrateOldData(store = browserStore) {

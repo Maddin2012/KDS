@@ -88,6 +88,11 @@ danach nicht jede Position erledigt, springt der Status automatisch auf **Offen*
 Im abgeschlossenen Serviceprotokoll legt **„🔧 Auftrag aus offenen Mängeln“** einen
 Auftrag mit allen n.i.O.-Punkten (nicht behoben) als Positionen an.
 
+**Fuhrpark aus Excel.** ⚙ Einstellungen → *Daten* → **„Fuhrpark aus Excel ersetzen“**
+(nur Admins): die Fahrzeugliste (.xls/.xlsx, Aufbau wie „Fz.-Ident-Nr.“) wählen – Gruppen
+(Krane, Ladekrane, Zugmaschinen, BF3, Auflieger, PKW, Stapler) und Spalten werden übernommen,
+der bisherige Fuhrpark wird ersetzt. Termine von Fahrzeugen mit gleicher ID bleiben auf Wunsch erhalten.
+
 **Fuhrpark.** Seitenleiste → *Werkstatt* → **Fuhrpark**: alle Fahrzeuge mit
 ID, Typ, Kennzeichen, Werk-Nr., Baujahr, FIN, **UVV/HU/SP fällig am** und
 **letzter Service**. Fälligkeiten sind markiert (rot = überfällig, gelb = innerhalb

@@ -6,7 +6,7 @@
 import {
   CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
   emptyDraft, migrateOldData, storeFromMap, TEXT_FIX_VERSION, fixTemplateTexts,
-  legacyFleet, VEHICLE_FIELDS, vehicleLabel
+  legacyFleet, VEHICLE_FIELDS, vehicleLabel, FLEET_GROUPS, parseFleetRows
 } from './data.js';
 import { createLocalStore } from './store-local.js';
 
@@ -105,6 +105,17 @@ function confirmModal(message, confirmLabel, danger = true) {
     yes.addEventListener('click', y); no.addEventListener('click', n);
     ov.addEventListener('mousedown', o); document.addEventListener('keydown', k);
   });
+}
+
+/* Excel-Leser (SheetJS) erst bei Bedarf laden */
+let xlsxPromise = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxPromise || (xlsxPromise = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'vendor/xlsx/xlsx.full.min.js';
+    s.onload = () => res(window.XLSX); s.onerror = () => { xlsxPromise = null; rej(new Error('Excel-Leser konnte nicht geladen werden (Internet?).')); };
+    document.head.appendChild(s);
+  }));
 }
 
 /* Eingabe-Dialog (Ersatz für window.prompt – funktioniert auch als installierte App) */
@@ -1141,8 +1152,17 @@ function renderFleet() {
     if (state === 'none') return sts.some(s => s === '');
     return sts.includes(state);
   };
+  // Gruppen (Krane, Ladekrane, …) in der Reihenfolge der Fahrzeugliste
+  const groups = fleetGroups();
+  const gsel = $('fleet-grp'), gcur = gsel.value;
+  gsel.innerHTML = '<option value="">Alle Gruppen</option>' + groups.map(g => `<option value="${esc(g || '__none__')}">${esc(g || 'Ohne Gruppe')} (${S.vehicles.filter(v => (v.gruppe || '') === g).length})</option>`).join('');
+  gsel.value = groups.map(g => g || '__none__').includes(gcur) ? gcur : '';
+  const grp = gsel.value === '__none__' ? '' : gsel.value, grpOn = gsel.value !== '';
   let list = sortVehicles(S.vehicles).filter(v => !q ||
-    [v.code, v.typ, v.kz, v.werk, v.fin, v.baujahr].join(' ').toLowerCase().includes(q)).filter(stateOk);
+    [v.code, v.hersteller, v.typ, v.kz, v.fahrer, v.werk, v.fin, v.baujahr, v.gruppe].join(' ').toLowerCase().includes(q))
+    .filter(v => !grpOn || (v.gruppe || '') === grp).filter(stateOk);
+  const gi = (v) => { const i = groups.indexOf(v.gruppe || ''); return i < 0 ? 999 : i; };
+  if (!kind) list = list.slice().sort((x, y) => gi(x) - gi(y));   // stabil: innerhalb der Gruppe nach ID
   // mit gewählter Prüfung: nach Fälligkeit sortieren (früheste zuerst, ohne Datum ans Ende)
   if (kind) list = list.slice().sort((x, y) => (dueDateOf(x, kind) || '9999').localeCompare(dueDateOf(y, kind) || '9999'));
   let over = 0, soon = 0;
@@ -1152,7 +1172,7 @@ function renderFleet() {
       ${over ? `<span class="badge bad">${lbl}${over} überfällig</span>` : ''}
       ${soon ? `<span class="badge pend">${lbl}${soon} in den nächsten 30 Tagen fällig</span>` : ''}
       ${!over && !soon ? `<span class="badge ok">${lbl}Keine Fälligkeiten in den nächsten 30 Tagen</span>` : ''}
-      ${kind || state ? `<span class="badge cat">${list.length} von ${S.vehicles.length} Fahrzeugen</span>` : ''}
+      ${kind || state || grpOn ? `<span class="badge cat">${list.length} von ${S.vehicles.length} Fahrzeugen</span>` : `<span class="badge cat">${S.vehicles.length} Fahrzeuge</span>`}
     </div>` : '';
   if (S.fleetError) {
     $('fleet-list').innerHTML = `<div class="empty-note">${S.fleetError === 'rules'
@@ -1179,32 +1199,45 @@ function renderFleet() {
   const inp = (v, f, type = 'text', cls = '') => `<input class="fe-in ${cls}" data-fe="${f}" data-vid="${esc(v.id)}" type="${type}" value="${esc(val(v, f))}" autocomplete="off" aria-label="${f}">`;
   const cells = (v) => edit ? `
           <td data-l="ID">${inp(v, 'code', 'text', 'mono')}</td>
+          <td data-l="Hersteller">${inp(v, 'hersteller')}</td>
           <td data-l="Fahrzeug">${inp(v, 'typ', 'text', 'fe-typ')}</td>
           <td data-l="Kennzeichen">${inp(v, 'kz', 'text', 'mono')}</td>
+          <td data-l="Fahrer">${inp(v, 'fahrer')}</td>
+          <td data-l="FIN">${inp(v, 'fin', 'text', 'mono')}</td>
           <td data-l="Werk-Nr.">${inp(v, 'werk', 'text', 'mono')}</td>
+          <td data-l="Baujahr">${inp(v, 'baujahr', 'text', 'mono')}</td>
           <td data-l="UVV fällig">${inp(v, 'uvv', 'date')}</td>
           <td data-l="HU fällig">${inp(v, 'hu', 'date')}</td>
           <td data-l="SP fällig">${inp(v, 'sp', 'date')}</td>
           <td data-l="Letzter Service">${inp(v, 'letzterService', 'date')}</td>` : `
           <td data-l="ID" class="mono"><b>${esc(v.code || '—')}</b></td>
+          <td data-l="Hersteller">${esc(v.hersteller || '—')}</td>
           <td data-l="Fahrzeug"><b>${esc(v.typ || '—')}</b>${v._pending ? ' <span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</td>
           <td data-l="Kennzeichen" class="mono">${esc(v.kz || '—')}</td>
+          <td data-l="Fahrer">${esc(v.fahrer || '—')}</td>
+          <td data-l="FIN" class="mono fin">${esc(v.fin || '—')}</td>
           <td data-l="Werk-Nr." class="mono">${esc(v.werk || '—')}</td>
+          <td data-l="Baujahr" class="mono">${esc(v.baujahr || '—')}</td>
           <td data-l="UVV fällig">${due(v, 'uvv')}</td>
           <td data-l="HU fällig">${due(v, 'hu')}</td>
           <td data-l="SP fällig">${due(v, 'sp')}</td>
           <td data-l="Letzter Service">${svc(v)}</td>`;
   $('fleet-list').innerHTML = `
     ${edit ? '<div class="fe-bar no-print">✎ <b>Bearbeitungsmodus</b> – Änderungen werden automatisch gespeichert. Zum Beenden den Stift erneut antippen.</div>' : ''}
-    <table class="fleet-table${edit ? ' fe-mode' : ''}">
-      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
-      <tbody>${list.map(v => `
+    <div class="fleet-scroll"><table class="fleet-table${edit ? ' fe-mode' : ''}">
+      <thead><tr><th>ID</th><th>Hersteller</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Fahrer</th><th>FIN</th><th>Werk-Nr.</th><th>Baujahr</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
+      <tbody>${list.map((v, i) => `${!kind && (i === 0 || (list[i - 1].gruppe || '') !== (v.gruppe || '')) ? `
+        <tr class="grp-row"><td colspan="12">${esc(v.gruppe || 'Ohne Gruppe')} <small>${list.filter(x => (x.gruppe || '') === (v.gruppe || '')).length}</small></td></tr>` : ''}
         <tr class="fleet-row${S.selVeh === v.id ? ' sel' : ''}" data-vid="${esc(v.id)}" tabindex="0" aria-selected="${S.selVeh === v.id}">${cells(v)}
         </tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
     <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen zum Markieren, doppelt antippen für ${amAdmin() ? 'Details und Bearbeiten · ✎ oben bearbeitet das ganze Blatt' : 'Details'}.</p>`;
   const pen = $('btn-fleet-edit'); if (pen) { pen.classList.toggle('on', edit); pen.setAttribute('aria-pressed', edit); pen.title = edit ? 'Bearbeiten beenden' : 'Fuhrpark bearbeiten'; }
+}
+function fleetGroups() {
+  const used = [...new Set(S.vehicles.map(v => v.gruppe || ''))];
+  return [...FLEET_GROUPS.filter(g => used.includes(g)), ...used.filter(g => !FLEET_GROUPS.includes(g)).sort(deSort)];
 }
 /* ---------- Fuhrpark direkt im Blatt bearbeiten ---------- */
 const feTimers = {};
@@ -1255,11 +1288,16 @@ function openVehicle(id) {
     ${admin ? '' : '<p>Nur Admins (SE, KÖ) können Fahrzeuge ändern.</p>'}
     <form id="veh-form" novalidate>
       <div class="veh-grid">
+        <div class="field"><label for="vf-gruppe">Gruppe</label>
+          <input id="vf-gruppe" list="vf-gruppen" value="${esc(v.gruppe || '')}" placeholder="z. B. Krane" ${admin ? '' : 'disabled'} autocomplete="off">
+          <datalist id="vf-gruppen">${[...new Set([...FLEET_GROUPS, ...fleetGroups()])].filter(Boolean).map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>
         ${field('code', 'ID (Kurzcode)', 'text', 'z. B. 088')}
+        ${field('hersteller', 'Hersteller', 'text', 'z. B. Liebherr')}
         ${field('typ', 'Fahrzeug / Typ *', 'text', 'z. B. MK 88 Plus')}
         ${field('kz', 'Kennzeichen', 'text', 'z. B. OD-KS 088')}
+        ${field('fahrer', 'Fahrer', 'text', 'z. B. Müller')}
         ${field('werk', 'Werk-Nr.', 'text', 'z. B. 110 128')}
-        ${field('baujahr', 'Baujahr', 'text', 'z. B. 2021')}
+        ${field('baujahr', 'Baujahr', 'text', 'z. B. 03/2021')}
         ${field('fin', 'Fahrgestellnr. (FIN)')}
         ${field('uvv', 'UVV fällig am', 'date')}
         ${field('hu', 'HU fällig am', 'date')}
@@ -1852,6 +1890,34 @@ function openSettings() {
           <div class="setup-err" id="set-err"></div>
         </form>${back}`;
     }
+    if (screen === 'fleetxls') {
+      const L = ctx.fleet, by = {};
+      (L || []).forEach(v => { by[v.gruppe || 'Ohne Gruppe'] = (by[v.gruppe || 'Ohne Gruppe'] || 0) + 1; });
+      const same = L ? L.filter(v => S.vehicles.some(o => o.code && o.code === v.code)).length : 0;
+      return `<h3>Fuhrpark aus Excel ersetzen</h3>
+        <p>Die Fahrzeugliste (wie „Fz.-Ident-Nr.“) auswählen. Gelesen wird das Blatt mit den Gruppen
+        (KRANE, Ladekrane, Zugmaschinen …) und den Spalten Id-Nr., Hersteller, Fahrzeug, Kennzeichen, Fahrer,
+        Fahrgestellnummer, Werk-Nr. und B-Jahr. Das Blatt „Verkauf“ wird nicht übernommen.</p>
+        <form id="set-form" novalidate>
+          <div class="field"><label for="fx-file">${ctx.fileName ? 'Andere Datei wählen' : 'Excel-Datei'}</label>
+            <input id="fx-file" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+          ${ctx.loading ? '<p>Datei wird gelesen …</p>' : ''}
+          ${ctx.err ? `<div class="setup-err">${esc(ctx.err)}</div>` : ''}
+          ${L ? `
+            <p style="margin:6px 0 4px">Eingelesen: <b>${esc(ctx.fileName)}</b> – Blatt „${esc(ctx.sheet)}“</p>
+            <div class="set-list" style="margin-bottom:10px">
+              ${Object.entries(by).map(([g, n]) => `<div class="set-btn" style="cursor:default">${esc(g)} <small>${n} Fahrzeuge</small></div>`).join('')}
+            </div>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin-bottom:12px">
+              <input type="checkbox" id="fx-keep" checked style="margin-top:3px">
+              <span>Termine (UVV, HU, SP, letzter Service) von Fahrzeugen mit <b>gleicher ID</b> behalten – betrifft ${same} von ${L.length}.
+              Die Excel-Liste enthält keine Termine.</span>
+            </label>
+            <p class="setup-err" style="margin-bottom:10px">Achtung: Alle ${S.vehicles.length} Fahrzeuge im Fuhrpark werden gelöscht und durch die ${L.length} aus der Datei ersetzt.</p>
+            <button class="btn-big btn-danger-big" type="submit">Fuhrpark ersetzen (${L.length} Fahrzeuge)</button>` : ''}
+          <div class="setup-err" id="set-err"></div>
+        </form>${back}`;
+    }
     if (screen === 'block') {
       const c = ctx.code, blk = S.gesperrt.includes(c);
       const n = S.memberList.filter(m => m.monteur === c).length;
@@ -1921,6 +1987,7 @@ function openSettings() {
       <div class="set-section">
         <h4>Daten</h4>
         <div class="set-list">
+          <button class="set-btn" type="button" data-s="fleetxls">Fuhrpark aus Excel ersetzen <small>Fahrzeugliste .xls / .xlsx</small></button>
           <button class="set-btn" type="button" data-s="import">Daten aus alter Version übernehmen <small>KDS-Altdaten.json</small></button>
         </div>
       </div>` : ''}
@@ -1936,6 +2003,21 @@ function openSettings() {
   draw();
 
   ov.onchange = async (e) => {
+    if (e.target.id === 'fx-file' && e.target.files.length) {
+      const file = e.target.files[0];
+      ctx = { fileName: file.name, loading: true }; draw();
+      try {
+        if (file.size > 10 * 1024 * 1024) throw new Error('Die Datei ist zu groß.');
+        const XLSX = await loadXLSX();
+        const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+        const name = wb.SheetNames.find(n => /id/i.test(n) && !/verkauf/i.test(n)) || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+        const list = parseFleetRows(rows);
+        if (!list.length) throw new Error('In der Datei wurden keine Fahrzeuge gefunden (erste Spalte = Id-Nr.).');
+        ctx = { fileName: file.name, sheet: name, fleet: list };
+      } catch (ex) { ctx = { fileName: file.name, err: ex.message || 'Die Datei konnte nicht gelesen werden.' }; }
+      draw(); return;
+    }
     if (e.target.id !== 'imp-file' || !e.target.files.length) return;
     const file = e.target.files[0];
     ctx = { err: '', mig: null, fileName: file.name };
@@ -2011,6 +2093,28 @@ function openSettings() {
   ov.onsubmit = async (e) => {
     e.preventDefault();
     if (screen === 'import') { await doImport(); return; }
+    if (screen === 'fleetxls') {
+      const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
+      if (!amAdmin()) { err.textContent = 'Bitte zuerst als Admin anmelden.'; return; }
+      if (!ctx.fleet) return;
+      if (!(await confirmModal(`Alle ${S.vehicles.length} Fahrzeuge löschen und ${ctx.fleet.length} aus der Excel-Liste übernehmen?`, 'Ersetzen'))) return;
+      const keep = $('fx-keep') && $('fx-keep').checked;
+      const list = ctx.fleet.map(v => {
+        const d = {}; VEHICLE_FIELDS.forEach(f => { d[f] = v[f] || ''; });
+        const o = keep && S.vehicles.find(x => x.code && x.code === v.code);
+        if (o) { ['uvv', 'hu', 'sp', 'letzterService', 'letzterServiceVon'].forEach(f => { if (o[f]) d[f] = o[f]; }); }
+        return d;
+      });
+      btn.disabled = true; err.textContent = 'Wird ersetzt …';
+      try {
+        flushFleetEdit();
+        const r = await S.store.replaceFleet(list, S.me);
+        S.selVeh = null;
+        showToast(`Fuhrpark ersetzt: ${r.added} Fahrzeuge übernommen, ${r.deleted} alte entfernt`);
+        close(); if (S.view !== 'fleet') { S.view = 'fleet'; render(); }
+      } catch (ex) { btn.disabled = false; err.textContent = ex.message || 'Das hat nicht geklappt'; }
+      return;
+    }
     if (screen === 'block') {
       const err = $('set-err'), btn = ov.querySelector('#set-form button[type="submit"]');
       if (!amAdmin()) { err.textContent = 'Bitte zuerst als Admin anmelden.'; return; }
@@ -2532,7 +2636,7 @@ $('fleet-search').addEventListener('input', renderFleet);
 $('fleet-list').addEventListener('input', (e) => { if (e.target.classList.contains('fe-in')) onFleetInput(e.target); });
 $('fleet-list').addEventListener('change', (e) => { if (e.target.classList.contains('fe-in')) { onFleetInput(e.target); saveFleetRow(e.target.dataset.vid); } });
 $('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.contains('fe-in') && S.fePending[e.target.dataset.vid]) saveFleetRow(e.target.dataset.vid); });
-['fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
+['fleet-grp', 'fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
 $('orders-status').addEventListener('change', renderOrders);
 ['stock-search', 'stock-ort', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));

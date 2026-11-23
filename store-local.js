@@ -175,6 +175,11 @@ export function createLocalStore() {
     },
     saveVehicleNow(id, data, by) { return this.saveVehicle(id, data, by); },
     async deleteVehicle(id) { write(K_FLEET, read(K_FLEET, []).filter(v => v.id !== id)); emitFleet(); },
+    async replaceFleet(list, by) {
+      const old = read(K_FLEET, []).length;
+      write(K_FLEET, list.map((v, i) => ({ ...v, id: 'f' + Date.now().toString(36) + i, updatedBy: by || '', updatedAt: Date.now() })));
+      emitFleet(); return { deleted: old, added: list.length };
+    },
     async setLastService(id, date, by) {
       write(K_FLEET, read(K_FLEET, []).map(v => v.id === id ? { ...v, letzterService: date, letzterServiceVon: by || '' } : v)); emitFleet();
     },
