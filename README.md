@@ -138,8 +138,10 @@ darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
 **Serviceliste zum Auftrag.** Im Auftrag **„📋 Serviceliste hinzufügen“**: Die passende Liste
 kommt automatisch nach der Fahrzeuggruppe (Krane → Kran, Ladekrane → Ladekran,
 Zugmaschinen → LKW, BF3 → BF3, PKW → PKW; sonst wird sie gewählt). Fahrzeug, Km, Stunden,
-Datum und Mitarbeiter werden aus dem Auftrag übernommen. Beim **Abschließen** landet die Liste
-im Archiv **und** im Auftrag, die App springt zurück in den Auftrag.
+Datum und Mitarbeiter werden aus dem Auftrag übernommen. Statt „Protokoll abschließen“ heißt der
+Knopf dann **„✓ Zum Auftrag hinzufügen“**: Die Liste wird im Auftrag gespeichert (auf allen Geräten
+sichtbar) und lässt sich dort jederzeit wieder öffnen und ergänzen. Wird der **Auftrag
+abgeschlossen**, kommt die Liste automatisch ins Archiv und in die Historie des Fahrzeugs.
 
 **Material aus dem Werkstattauftrag abbuchen.** Im Auftrag unter *Material aus dem
 Lager* → **„+ Aus Lager entnehmen“** → Artikel suchen und antippen → Menge →

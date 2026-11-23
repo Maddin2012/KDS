@@ -256,6 +256,8 @@ function renderChrome() {
   $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   renderOrderLink();
+  const cp = document.querySelector('#hero-actions [data-act="close-protocol"]');
+  if (cp) cp.textContent = (mode === 'list' && draft.header && draft.header.orderId) ? '✓ Zum Auftrag hinzufügen' : 'Protokoll abschließen';
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
 
@@ -694,7 +696,7 @@ function renderReorder() {
    Werkstattaufträge
    ===================================================================== */
 const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
-  'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager'];
+  'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager', 'svc'];
 const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', fertig: 'Abgeschlossen' };
 const emptyOrderRow = () => ({ id: newId(), text: '', mat: '', h: '', done: false });
 const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -708,6 +710,7 @@ function normalizeOrder(o) {
   d.rows = Array.isArray(d.rows) && d.rows.length ? d.rows.map(r => ({ ...emptyOrderRow(), ...r })) : [emptyOrderRow()];
   d.crew = Array.isArray(d.crew) ? d.crew : [];
   d.lager = Array.isArray(d.lager) ? d.lager : [];
+  d.svc = Array.isArray(d.svc) ? d.svc : [];     // Servicelisten zum Auftrag: { cat, draft, von, ts, protoId }
   ['fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum', 'notes'].forEach(f => { d[f] = d[f] || ''; });
   return d;
 }
@@ -862,7 +865,7 @@ function renderOrder() {
 function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
-  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"], [data-act="order-svc-del"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
 /* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
@@ -1017,17 +1020,72 @@ const draftHasData = (d) => !!(d && ((d.header && String(d.header.fId || '').tri
 const draftsForOrder = (oid) => CATEGORIES.filter(c => { const d = c === S.cat ? draft : loadDraft(c); return d.header && d.header.orderId === oid; });
 function renderOrderService() {
   const o = S.orderEdit, box = $('o-svc'); if (!box || !o) return;
-  const done = S.protocols.filter(p => p.header && p.header.orderId === o.id).sort((x, y) => (y.ts || 0) - (x.ts || 0));
-  const running = draftsForOrder(o.id);
+  const locked = orderLocked(o);
+  const running = draftsForOrder(o.id).filter(c => !o.svc.some(x => x.cat === c && x.ts >= ((c === S.cat ? draft : loadDraft(c)).svcTs || 0)));
   const cat = catForVehicle(orderVehicle(o));
   const btn = $('o-svc-btn'); if (btn) btn.textContent = '📋 Serviceliste hinzufügen' + (cat ? ` (${cat})` : '');
-  box.innerHTML = (running.length || done.length) ? `<div class="o-svc-list">
-      ${running.map(c => `<button type="button" class="o-svc-row" data-act="order-open-draft" data-cat="${esc(c)}">
-        <span class="badge pend">in Arbeit</span><b>Serviceliste ${esc(c)}</b><small>auf diesem Gerät, noch nicht abgeschlossen – weiter ausfüllen</small></button>`).join('')}
-      ${done.map(p => { const st = protoStats(p); return `<button type="button" class="o-svc-row" data-act="order-open-proto" data-pid="${esc(p.id)}">
-        ${st.open ? `<span class="badge bad">${st.open} n.i.O.</span>` : '<span class="badge ok">abgeschlossen</span>'}<b>Serviceliste ${esc(p.category)}</b>
-        <small>${esc(fmtDate(p))} · ${esc((p.monteure || []).join(', ') || p.closedBy || '')}</small></button>`; }).join('')}
-    </div>` : `<p class="proto-meta">Noch keine Serviceliste zu diesem Auftrag.${cat ? '' : ' Für die Fahrzeuggruppe gibt es keine feste Liste – die Kategorie wird beim Hinzufügen gewählt.'}</p>`;
+  const rows = o.svc.map((x, i) => { const st = protoStats(buildProtocolFrom(x.cat, x.draft)); return `<div class="o-svc-item">
+      <button type="button" class="o-svc-row" data-act="order-svc-open" data-idx="${i}">
+        ${st.open ? `<span class="badge bad">${st.open} n.i.O.</span>` : `<span class="badge ok">${st.ok + st.fixed}/${st.total} i.O.</span>`}
+        <b>Serviceliste ${esc(x.cat)}</b>
+        <small>${x.protoId ? 'mit Auftragsabschluss in Archiv und Fahrzeug-Historie übernommen' : 'im Auftrag gespeichert'} · ${esc(x.von || '')} · ${esc(new Date(x.ts || 0).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</small>
+      </button>${locked ? '' : `<button class="btn-del-row no-print" data-act="order-svc-del" data-idx="${i}" title="Aus dem Auftrag entfernen">✕</button>`}</div>`; }).join('');
+  const runs = running.map(c => `<div class="o-svc-item"><button type="button" class="o-svc-row" data-act="order-open-draft" data-cat="${esc(c)}">
+      <span class="badge pend">in Arbeit</span><b>Serviceliste ${esc(c)}</b><small>auf diesem Gerät, noch nicht zum Auftrag hinzugefügt – weiter ausfüllen</small></button></div>`).join('');
+  box.innerHTML = (rows || runs) ? `<div class="o-svc-list">${runs}${rows}</div>`
+    : `<p class="proto-meta">Noch keine Serviceliste zu diesem Auftrag.${cat ? '' : ' Für die Fahrzeuggruppe gibt es keine feste Liste – die Kategorie wird beim Hinzufügen gewählt.'}</p>`;
+}
+/* Serviceliste aus dem Auftrag öffnen (zum Weiterbearbeiten bzw. Ansehen) */
+async function openOrderSvc(idx) {
+  const o = S.orderEdit; const x = o && o.svc[idx]; if (!x) return;
+  if (orderLocked(o)) {                       // abgeschlossen: nur ansehen
+    if (x.protoId && S.protocols.some(p => p.id === x.protoId)) { flushOrderSave(); S.openId = x.protoId; S.view = 'protocol'; render(); window.scrollTo(0, 0); }
+    else showToast('Der Auftrag ist abgeschlossen – ändern können nur SE und KÖ');
+    return;
+  }
+  const cur = x.cat === S.cat ? draft : loadDraft(x.cat);
+  if (draftHasData(cur) && !(cur.header && cur.header.orderId === o.id)
+      && !(await confirmModal(`In der Serviceliste ${x.cat} sind auf diesem Gerät noch andere Eingaben${cur.header.fId ? ` („${cur.header.fId}“)` : ''}. Verwerfen und die Liste aus dem Auftrag öffnen?`, 'Öffnen'))) return;
+  const d = JSON.parse(JSON.stringify(x.draft)); d.svcTs = x.ts;
+  lsSet(draftKey(x.cat), JSON.stringify(d));
+  openOrderDraft(x.cat);
+}
+/* „✓ Zum Auftrag hinzufügen“: laufende Serviceliste im Auftrag speichern (für alle Geräte sichtbar) */
+async function saveDraftToOrder() {
+  const oid = draft.header && draft.header.orderId;
+  const base = oid && (S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : S.orders.find(x => x.id === oid));
+  if (!base) { showToast('Der Auftrag wurde nicht gefunden'); return; }
+  const o = S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : normalizeOrder(base);
+  if (orderLocked(o)) { showToast('Der Auftrag ist abgeschlossen – ändern können nur SE und KÖ'); return; }
+  const { svcTs, ...clean } = JSON.parse(JSON.stringify(draft));
+  const entry = { cat: S.cat, draft: clean, von: S.me || '', ts: Date.now() };
+  const i = o.svc.findIndex(x => x.cat === S.cat);
+  if (i >= 0) o.svc[i] = entry; else o.svc.push(entry);
+  const data = pickOrder(o); data.rows = o.rows.map(r => ({ id: r.id, text: r.text || '', mat: r.mat || '', h: r.h || '', done: !!r.done }));
+  const local = S.orders.find(x => x.id === oid); if (local) local.svc = o.svc;
+  S.store.saveOrder(oid, data, S.me).catch((err) => showToast(err && err.code === 'permission-denied' ? 'Nicht gespeichert – der Auftrag ist abgeschlossen' : 'Speichern fehlgeschlagen'));
+  draft = emptyDraft(); saveDraft();
+  openOrder(oid);
+  showToast(`Serviceliste ${entry.cat} zum Auftrag ${o.nr} hinzugefügt`);
+}
+/* Beim Abschließen des Auftrags: Servicelisten ins Archiv (→ auch in die Historie des Fahrzeugs) */
+async function archiveOrderServices(o) {
+  if (!o || !o.svc.length) return;
+  let changed = false;
+  for (const x of o.svc) {
+    if (x.protoId && x.archivedTs === x.ts) continue;
+    const p = buildProtocolFrom(x.cat, x.draft, x.von || S.me);
+    p.header = { ...p.header, orderId: o.id, orderNr: o.nr };
+    p.ts = Date.now();
+    try {
+      if (x.protoId && amAdmin() && S.protocols.some(q => q.id === x.protoId)) await S.store.deleteProtocol(x.protoId).catch(() => {});
+      x.protoId = await S.store.addProtocol(p); x.archivedTs = x.ts; changed = true;
+      const veh = p.header.vehId && S.vehicles.find(v => v.id === p.header.vehId);
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(p.header.fDate || '') ? p.header.fDate : todayIso();
+      if (veh && (!veh.letzterService || day > veh.letzterService)) S.store.setLastService(veh.id, day, S.me).catch(() => {});
+    } catch (e) { showToast('Serviceliste konnte nicht ins Archiv übernommen werden'); }
+  }
+  if (changed) { queueOrderSave(); showToast('Auftrag abgeschlossen – Serviceliste ins Archiv und in die Fahrzeug-Historie übernommen'); }
 }
 function pickCategory(suggest) {
   return new Promise((resolve) => {
@@ -1046,6 +1104,8 @@ async function addServiceToOrder() {
   let cat = catForVehicle(v);
   if (!cat) { cat = await pickCategory(); if (!cat) return; }
   flushOrderSave(); flushTemplateSave();
+  const have = o.svc.findIndex(x => x.cat === cat);
+  if (have >= 0) { openOrderSvc(have); return; }      // gibt es schon im Auftrag → dort weiter
   const cur = cat === S.cat ? draft : loadDraft(cat);
   if (cur.header && cur.header.orderId === o.id) { openOrderDraft(cat); return; }      // läuft schon → weiter ausfüllen
   if (draftHasData(cur) && !(await confirmModal(`In der Serviceliste ${cat} sind auf diesem Gerät schon Eingaben${cur.header.fId ? ` für „${cur.header.fId}“` : ''}, die noch nicht abgeschlossen sind. Verwerfen und neu für diesen Auftrag beginnen?`, 'Neu beginnen'))) return;
@@ -1071,7 +1131,7 @@ function renderOrderLink() {
   const o = oid && S.orders.find(x => x.id === oid);
   el.classList.toggle('hidden', !oid);
   if (!oid) { el.innerHTML = ''; return; }
-  el.innerHTML = `<span>📋 Gehört zu <b>Auftrag ${esc(o ? o.nr : draft.header.orderNr || '')}</b> – beim Abschließen wird sie dort abgelegt.</span>
+  el.innerHTML = `<span>📋 Gehört zu <b>Auftrag ${esc(o ? o.nr : draft.header.orderNr || '')}</b> – mit „✓ Zum Auftrag hinzufügen“ wird sie dort gespeichert.</span>
     ${o ? `<button class="btn-sec" data-act="order-link-open" type="button">← Zum Auftrag</button>` : ''}`;
 }
 
@@ -1094,7 +1154,7 @@ function onOrderInput(t) {
     if (f === 'h') $('o-sum').textContent = fmtHours(orderHours(o));
   } else {
     o[f] = t.value;
-    if (f === 'status') { renderOrder(); }
+    if (f === 'status') { renderOrder(); if (t.value === 'fertig') archiveOrderServices(o); }
   }
   if (f !== 'status') reopenIfIncomplete();
   if (t.tagName === 'TEXTAREA') autoSize(t);
@@ -1812,8 +1872,10 @@ function switchCategory(cat) {
 /* =====================================================================
    Protokoll abschließen & Archiv
    ===================================================================== */
-function buildProtocol() {
-  const tpl = tplFor(S.cat);
+function buildProtocol() { return buildProtocolFrom(S.cat, draft, S.me); }
+function buildProtocolFrom(cat, draft, closedBy) {
+  const tpl = tplFor(cat);
+  draft = { off: {}, status: {}, notes: {}, monteure: [], header: {}, ...draft };
   const groups = tpl.groups
     .filter(g => !draft.off[g.id])
     .map(g => ({
@@ -1827,10 +1889,10 @@ function buildProtocol() {
     .filter(g => g.items.length || g.header)   // ganz abgewählte Gruppen fallen weg, Überschriften bleiben
     .map(({ header, ...g }) => g);
   return {
-    category: S.cat,
+    category: cat,
     header: { ...draft.header },
     monteure: [...draft.monteure],
-    closedBy: S.me,
+    closedBy: closedBy || S.me,
     ts: Date.now(),
     groups
   };
@@ -2799,7 +2861,7 @@ const actions = {
     if (!(await confirmModal('Alle Eingaben dieser Serviceliste verwerfen und neu beginnen?', 'Neu beginnen'))) return;
     draft = emptyDraft(); saveDraft(); render(); showToast('Neue Serviceliste ' + S.cat);
   },
-  'close-protocol': closeProtocol,
+  'close-protocol': () => (draft.header && draft.header.orderId ? saveDraftToOrder() : closeProtocol()),
   'edit-template': () => {
     if (!amAdmin()) return;
     S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); render();
@@ -2881,6 +2943,10 @@ const actions = {
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
   'order-add-service': () => addServiceToOrder(),
+  'order-svc-open': (btn) => openOrderSvc(+btn.dataset.idx),
+  'order-svc-del': async (btn) => { const o = S.orderEdit; const x = o && o.svc[+btn.dataset.idx]; if (!x || orderLocked(o)) return;
+    if (!(await confirmModal(`Serviceliste ${x.cat} aus dem Auftrag entfernen?${x.protoId ? ' Das bereits archivierte Protokoll bleibt im Archiv.' : ''}`, 'Entfernen'))) return;
+    o.svc.splice(+btn.dataset.idx, 1); queueOrderSave(); renderOrderService(); },
   'order-open-draft': (btn) => openOrderDraft(btn.dataset.cat),
   'order-open-proto': (btn) => { flushOrderSave(); S.openId = btn.dataset.pid; S.view = 'protocol'; render(); window.scrollTo(0, 0); },
   'order-link-open': () => { const oid = draft.header && draft.header.orderId; if (oid && S.orders.some(x => x.id === oid)) openOrder(oid); },
