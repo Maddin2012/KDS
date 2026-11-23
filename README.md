@@ -158,6 +158,12 @@ das Feld **Barcode / EAN** (mit 📷). Auch beim Entnehmen im Auftrag lässt sic
 EAN/UPC, Code 128/39/93, ITF, Codabar, QR und DataMatrix – auf Android/Chromebook mit dem eingebauten
 Leser, auf dem iPhone mit ZXing (vendor/zxing, Apache-2.0). Ohne Kamera kann der Code eingetippt werden.
 
+**QR-Etiketten.** *Lager* → **„🏷 QR-Etiketten“** (oder im Artikel „🏷 QR-Etikett“): Artikel wählen,
+Format (A4-Bogen 3 × 8 à 70 × 37 mm, A4-Bogen 2 × 5 à 105 × 57 mm oder Etikettendrucker 62 × 29 mm),
+Anzahl je Artikel und bei angebrochenen Bögen das erste freie Etikett → **Drucken**. Der QR-Code
+enthält den Barcode des Artikels bzw. – ohne Barcode – eine eigene Kennung; beim Scannen öffnet
+sich der Artikel. (QR-Erzeugung: qrcode-generator, MIT, vendor/qrcode.)
+
 **Bestellvorschläge** (nur SE und KÖ). *Lager* → **Bestellvorschläge**: alle Artikel am oder unter
 dem Mindestbestand mit empfohlener Menge (auffüllen auf das Doppelte des
 Mindestbestands) und erstem Lieferanten – druckbar als Bestellliste.

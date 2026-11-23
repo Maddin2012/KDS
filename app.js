@@ -531,7 +531,106 @@ function scanBarcode(title) {
   });
 }
 const normCode = (s) => String(s || '').trim().toLowerCase();
-const findArticleByCode = (code) => { const c = normCode(code); return c ? (S.articles.find(a => normCode(a.barcode) === c) || S.articles.find(a => normCode(a.sku) === c) || null) : null; };
+const findArticleByCode = (code) => { const c = normCode(code); if (!c) return null;
+  if (c.startsWith('kds:')) { const id = String(code).trim().slice(4); const x = S.articles.find(a => a.id === id); if (x) return x; }   // eigenes QR-Etikett
+  return S.articles.find(a => normCode(a.barcode) === c) || S.articles.find(a => normCode(a.sku) === c) || null; };
+
+/* ---------- QR-Etiketten zum Ausdrucken ----------
+   Inhalt: vorhandener Barcode des Artikels, sonst „KDS:<Kennung>“ – beides findet der Scanner. */
+const LABEL_FORMATS = {
+  a4_3x8: { name: 'A4-Bogen 3 × 8 (70 × 37 mm)', cols: 3, rows: 8, w: 70, h: 37, page: 'A4', padTop: 0.5 },
+  a4_2x5: { name: 'A4-Bogen 2 × 5, groß (105 × 57 mm)', cols: 2, rows: 5, w: 105, h: 57, page: 'A4', padTop: 6 },
+  roll_62x29: { name: 'Etikettendrucker 62 × 29 mm (einzeln)', cols: 1, rows: 1, w: 62, h: 29, page: '62mm 29mm', padTop: 0 },
+};
+let qrPromise = null;
+function loadQR() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  return qrPromise || (qrPromise = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'vendor/qrcode/qrcode.js';
+    s.onload = () => res(window.qrcode); s.onerror = () => { qrPromise = null; rej(new Error('QR-Erzeugung konnte nicht geladen werden')); };
+    document.head.appendChild(s);
+  }));
+}
+const labelCode = (a) => a.barcode ? String(a.barcode).trim() : 'KDS:' + a.id;
+function qrSvg(text) {
+  const q = window.qrcode(0, 'M'); q.addData(text); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+function openLabelDialog(preIds) {
+  const ov = $('setup');
+  const sel = new Set(preIds || []);
+  let fmt = lsGet('kds_label_fmt', 'a4_3x8'); if (!LABEL_FORMATS[fmt]) fmt = 'a4_3x8';
+  const arts = () => S.articles.slice().sort((x, y) => deSort(x.name || '', y.name || ''));
+  const drawList = () => {
+    const q = ($('lb-q') ? $('lb-q').value : '').trim().toLowerCase();
+    $('lb-list').innerHTML = arts().filter(a => !q || [a.sku, a.name, a.kat, a.lagerort].join(' ').toLowerCase().includes(q)).map(a => `
+      <label class="lb-item"><input type="checkbox" value="${esc(a.id)}" ${sel.has(a.id) ? 'checked' : ''}>
+        <span><b>${esc(a.name)}</b><small>${esc([a.sku, a.lagerort, a.barcode ? 'Code ' + a.barcode : 'neuer QR-Code'].filter(Boolean).join(' · '))}</small></span></label>`).join('')
+      || '<p class="proto-meta">Kein Artikel gefunden.</p>';
+    sum();
+  };
+  const sum = () => {
+    const f = LABEL_FORMATS[$('lb-fmt').value], n = sel.size * Math.max(1, +$('lb-copies').value || 1), per = f.cols * f.rows;
+    const off = f.cols * f.rows > 1 ? Math.max(0, (+$('lb-start').value || 1) - 1) : 0;
+    $('lb-sum').textContent = n ? `${n} Etikett${n === 1 ? '' : 'en'}${per > 1 ? ` auf ${Math.ceil((n + off) / per)} Bogen` : ''}` : 'Noch kein Artikel gewählt';
+    $('lb-start-wrap').style.display = per > 1 ? '' : 'none';
+  };
+  ov.innerHTML = `<div class="setup-card lb-card">${cardHead}<h3>🏷 QR-Etiketten drucken</h3>
+    <p>Für Regal, Kiste oder Gebinde. Gescannt öffnet das Etikett direkt den Artikel zum Buchen.</p>
+    <div class="lb-opts">
+      <div class="field"><label for="lb-fmt">Format</label><select id="lb-fmt">${Object.entries(LABEL_FORMATS).map(([k, f]) => `<option value="${k}" ${k === fmt ? 'selected' : ''}>${f.name}</option>`).join('')}</select></div>
+      <div class="field"><label for="lb-copies">Anzahl je Artikel</label><input id="lb-copies" type="number" min="1" max="50" value="1" inputmode="numeric"></div>
+      <div class="field" id="lb-start-wrap"><label for="lb-start">Beginnen bei Etikett Nr.</label><input id="lb-start" type="number" min="1" value="1" inputmode="numeric"></div>
+    </div>
+    <div class="field bc-wrap"><input id="lb-q" placeholder="Artikel suchen …" autocomplete="off"><button class="btn-sec" type="button" data-l="all">Alle</button><button class="btn-sec" type="button" data-l="none">Keine</button></div>
+    <div id="lb-list" class="osp-list lb-list"></div>
+    <p class="proto-meta" id="lb-sum"></p>
+    <button class="btn-big" type="button" data-l="print">Drucken</button>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
+  ov.classList.remove('hidden'); drawList();
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.oninput = null; ov.onchange = null; };
+  ov.oninput = (e) => { if (e.target.id === 'lb-q') drawList(); else sum(); };
+  ov.onchange = (e) => {
+    if (e.target.matches('.lb-item input')) { e.target.checked ? sel.add(e.target.value) : sel.delete(e.target.value); sum(); }
+    if (e.target.id === 'lb-fmt') { lsSet('kds_label_fmt', e.target.value); sum(); }
+  };
+  ov.onclick = async (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    const l = e.target.closest('[data-l]'); if (!l) return;
+    if (l.dataset.l === 'all') { $('lb-list').querySelectorAll('.lb-item input').forEach(i => { i.checked = true; sel.add(i.value); }); sum(); }
+    if (l.dataset.l === 'none') { sel.clear(); $('lb-list').querySelectorAll('.lb-item input').forEach(i => { i.checked = false; }); sum(); }
+    if (l.dataset.l === 'print') {
+      if (!sel.size) { showToast('Bitte mindestens einen Artikel wählen'); return; }
+      const f = $('lb-fmt').value, copies = Math.min(50, Math.max(1, +$('lb-copies').value || 1)), start = Math.max(1, +$('lb-start').value || 1);
+      close();
+      try { await printLabels(arts().filter(a => sel.has(a.id)), f, copies, start); } catch (err) { showToast(err.message || 'Drucken fehlgeschlagen'); }
+    }
+  };
+}
+async function printLabels(list, fmtKey, copies, start) {
+  await loadQR();
+  const f = LABEL_FORMATS[fmtKey], per = f.cols * f.rows;
+  const cells = []; for (let i = 0; i < (per > 1 ? start - 1 : 0); i++) cells.push(null);
+  list.forEach(a => { for (let i = 0; i < copies; i++) cells.push(a); });
+  const pages = []; for (let i = 0; i < cells.length; i += per) pages.push(cells.slice(i, i + per));
+  const big = f.h >= 50;
+  const cell = (a) => a ? `<div class="lbl${big ? ' big' : ''}" style="width:${f.w}mm;height:${f.h}mm">
+      <div class="lbl-qr">${qrSvg(labelCode(a))}</div>
+      <div class="lbl-t"><b>${esc(a.name || '')}</b>
+        ${a.sku ? `<span class="lbl-sku">${esc(a.sku)}</span>` : ''}
+        <span>${esc([a.lagerort, a.gebinde].filter(Boolean).join(' · '))}</span>
+        <small>${esc(labelCode(a).startsWith('KDS:') ? 'Krandienst Schulz' : labelCode(a))}</small></div></div>`
+    : `<div class="lbl empty" style="width:${f.w}mm;height:${f.h}mm"></div>`;
+  $('label-sheet').innerHTML = pages.map(p => `<div class="lbl-page" style="grid-template-columns:repeat(${f.cols}, ${f.w}mm);padding-top:${f.padTop}mm">${p.map(cell).join('')}</div>`).join('');
+  let st = $('label-page-style'); if (!st) { st = document.createElement('style'); st.id = 'label-page-style'; document.head.appendChild(st); }
+  st.textContent = `@media print { @page { size: ${f.page}; margin: 0 } }`;
+  document.body.classList.add('print-labels');
+  const done = () => { document.body.classList.remove('print-labels'); st.textContent = ''; window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  await new Promise(r => setTimeout(r, 60));
+  try { window.print(); } catch (e) { done(); throw new Error('Drucken wird von diesem Browser nicht unterstützt'); }
+  setTimeout(() => { if (!window.matchMedia('print').matches) done(); }, 1500);
+}
 /* Artikelliste: scannen → Buchungsfeld des Artikels aufklappen; unbekannt → (Admins) zuordnen oder neu anlegen */
 async function scanInStock() {
   const code = await scanBarcode('Artikel scannen'); if (!code) return;
@@ -619,6 +718,7 @@ function renderArticle() {
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn-sec" data-act="back-stock">← Alle Artikel</button>
         <span class="o-saved" id="a-saved"></span>
+        <button class="btn-sec" data-act="label-one" type="button">🏷 QR-Etikett</button>
       </div>
       <div class="actions">${admin ? '<button class="btn-sec btn-danger" data-act="delete-article">🗑️ Löschen</button>' : ''}</div>
     </div>
@@ -3069,6 +3169,8 @@ const actions = {
     try { await S.store.deleteAkteFile(S.openVehId, f.id); showToast('Gelöscht'); } catch (e) { showToast(e.message || 'Löschen fehlgeschlagen'); } },
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
+  'labels': () => { const ids = S.expandedArt ? [S.expandedArt] : []; openLabelDialog(ids); },
+  'label-one': () => { if (S.artEdit) openLabelDialog([S.artEdit.id]); },
   'scan-art-barcode': async () => {
     if (!amAdmin() || !S.artEdit) return;
     const code = await scanBarcode('Barcode des Artikels scannen'); if (!code) return;

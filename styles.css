@@ -1094,3 +1094,24 @@
   .scan-msg { position:absolute; left:0; right:0; bottom:0; padding:8px 12px; background:rgba(0,0,0,.55); color:#fff; font-size:14px; text-align:center }
   .scan-msg.err { background:#b42318 }
   .scan-manual { display:flex; gap:8px; padding:12px 14px } .scan-manual input { flex:1; min-width:0; border:1px solid var(--line); border-radius:6px; padding:9px 10px; background:var(--surface); color:var(--text); font-family:'IBM Plex Mono',monospace }
+  /* ---------- QR-Etiketten ---------- */
+  .lb-card { max-width:620px } .lb-opts { display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px }
+  .lb-opts select, .lb-opts input { width:100%; border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--surface); color:var(--text); font-size:15px }
+  .lb-list { max-height:280px } .lb-item { display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:8px 10px; cursor:pointer }
+  .lb-item small { display:block; color:var(--steel); font-size:12px } .lb-item input { width:18px; height:18px; accent-color:var(--orange) }
+  @media (max-width:560px) { .lb-opts { grid-template-columns:1fr 1fr } .lb-opts .field:first-child { grid-column:1 / -1 } }
+  .label-sheet { display:none }
+  @media print {
+    body.print-labels > *:not(#label-sheet) { display:none !important }
+    body.print-labels { background:#fff !important; margin:0 }
+    body.print-labels #label-sheet { display:block !important }
+    .lbl-page { display:grid; break-after:page; page-break-after:always }
+    .lbl-page:last-child { break-after:auto; page-break-after:auto }
+    .lbl { box-sizing:border-box; padding:2.5mm 3mm; display:flex; gap:2.5mm; align-items:center; overflow:hidden; color:#000; font-family:'Barlow',Arial,sans-serif }
+    .lbl-qr { height:100%; aspect-ratio:1; flex:none } .lbl-qr svg { width:100%; height:100%; display:block }
+    .lbl-t { display:flex; flex-direction:column; min-width:0; gap:0.6mm; line-height:1.15 }
+    .lbl-t b { font-size:9.5pt; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+    .lbl-sku { font-family:'IBM Plex Mono',monospace; font-size:8.5pt; font-weight:600 }
+    .lbl-t span { font-size:7.5pt } .lbl-t small { font-size:6pt; color:#444; font-family:'IBM Plex Mono',monospace; word-break:break-all }
+    .lbl.big .lbl-t b { font-size:13pt; -webkit-line-clamp:3 } .lbl.big .lbl-sku { font-size:11pt } .lbl.big .lbl-t span { font-size:9.5pt } .lbl.big .lbl-t small { font-size:7.5pt }
+  }

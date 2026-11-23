@@ -122,6 +122,7 @@
           <button class="btn-outline hidden" data-act="new-protocol" data-show="list">Neu beginnen</button>
           <button class="btn-outline btn-pen hidden" data-act="fleet-edit" data-show="fleet admin" id="btn-fleet-edit" title="Fuhrpark bearbeiten" aria-label="Fuhrpark bearbeiten" aria-pressed="false">✎</button>
           <button class="btn-primary hidden" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
+          <button class="btn-outline hidden" data-act="labels" data-show="stock">🏷 QR-Etiketten</button>
           <button class="btn-primary hidden" data-act="new-article" data-show="stock admin">+ Artikel</button>
           <button class="btn-w hidden" data-act="print" data-show="list protocol fleet vehicle order orders stock article reorder">Drucken / PDF</button>
           <button class="btn-primary hidden" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
@@ -297,5 +298,6 @@
 </div>
 
 <script type="module" src="app.js"></script>
+<div id="label-sheet" class="label-sheet" aria-hidden="true"></div>
 </body>
 </html>
