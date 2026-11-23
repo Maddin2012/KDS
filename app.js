@@ -2874,6 +2874,12 @@ document.addEventListener('click', (e) => {
   }
   const nav = e.target.closest('.nav-item');
   if (nav && nav.classList.contains('nav-soon')) { showToast('Das Lager kommt mit dem nächsten Ausbauschritt'); return; }
+  if (nav && nav.dataset.act === 'new-order') {     // Seitenleiste: „+ Neuer Auftrag“
+    if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
+    flushTemplateSave(); flushOrderSave();
+    if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
+    openNewOrder(); return;
+  }
   if (nav) {
     if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
