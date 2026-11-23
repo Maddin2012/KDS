@@ -35,6 +35,8 @@ const S = {
   articles: [],             // Lager
   openArticleId: null,
   selVeh: null,             // im Fuhrpark markiertes Fahrzeug
+  fleetEdit: false,         // Fuhrpark-Blatt im Bearbeitungsmodus (Stift)
+  fePending: {},            // noch nicht gespeicherte Eingaben im Blatt: { vid: { feld: wert } }
   expandedArt: null,
   artEdit: null,
   artDirty: false,
@@ -982,8 +984,9 @@ function addOrderRow() {
   all[all.length - 1].focus();
 }
 // Fuhrpark: Doppelklick bzw. Enter auf einer Zeile öffnet das Fahrzeug direkt
-document.addEventListener('dblclick', (e) => { const r = e.target.closest && e.target.closest('#fleet-list .fleet-row'); if (r) { S.selVeh = r.dataset.vid; openVehicle(r.dataset.vid); } });
+document.addEventListener('dblclick', (e) => { if (e.target.closest && e.target.closest('.fe-in')) return; const r = e.target.closest && e.target.closest('#fleet-list .fleet-row'); if (r) { S.selVeh = r.dataset.vid; openVehicle(r.dataset.vid); } });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fe-in')) { e.target.blur(); return; }
   if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fleet-row')) { S.selVeh = e.target.dataset.vid; openVehicle(e.target.dataset.vid); }
 });
 // Enter in „Arbeit“ = neue Position (Umschalt+Enter = neue Zeile im Feld)
@@ -1163,19 +1166,26 @@ function renderFleet() {
       : 'Fahrzeuge legen die Admins (SE, KÖ) an.'}</div>`;
     return;
   }
-  // Auswahl: Zeile antippen markiert, „Bearbeiten“ öffnet das markierte Fahrzeug
+  // Auswahl: Zeile antippen markiert, Doppelklick öffnet das Fahrzeug
   if (S.selVeh && !list.some(v => v.id === S.selVeh)) S.selVeh = null;
-  updateVehEditBtn();
+  const edit = S.fleetEdit && amAdmin();
   if (!list.length) { $('fleet-list').innerHTML = '<div class="empty-note">Kein Fahrzeug zu dieser Auswahl.</div>'; return; }
   const due = (v, f) => { const st = dueState(v[f]); return `<span class="due ${st}">${esc(fmtDay(v[f]) || '—')}</span>`; };
   const svc = (v) => { const nd = serviceDue(v.letzterService), st = dueState(nd);
     return v.letzterService ? `<span class="due ${st}" title="nächster Service fällig ${esc(fmtDay(nd))}">${esc(fmtDay(v.letzterService))}</span>` : '—'; };
   const hl = (k) => kind === k ? ' class="col-hl"' : '';
-  $('fleet-list').innerHTML = `
-    <table class="fleet-table">
-      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
-      <tbody>${list.map(v => `
-        <tr class="fleet-row${S.selVeh === v.id ? ' sel' : ''}" data-vid="${esc(v.id)}" tabindex="0" aria-selected="${S.selVeh === v.id}">
+  // Bearbeitungsmodus (Stift): das ganze Blatt wird zu Eingabefeldern, Änderungen speichern sich selbst
+  const val = (v, f) => (S.fePending[v.id] && S.fePending[v.id][f] !== undefined) ? S.fePending[v.id][f] : (v[f] || '');
+  const inp = (v, f, type = 'text', cls = '') => `<input class="fe-in ${cls}" data-fe="${f}" data-vid="${esc(v.id)}" type="${type}" value="${esc(val(v, f))}" autocomplete="off" aria-label="${f}">`;
+  const cells = (v) => edit ? `
+          <td data-l="ID">${inp(v, 'code', 'text', 'mono')}</td>
+          <td data-l="Fahrzeug">${inp(v, 'typ', 'text', 'fe-typ')}</td>
+          <td data-l="Kennzeichen">${inp(v, 'kz', 'text', 'mono')}</td>
+          <td data-l="Werk-Nr.">${inp(v, 'werk', 'text', 'mono')}</td>
+          <td data-l="UVV fällig">${inp(v, 'uvv', 'date')}</td>
+          <td data-l="HU fällig">${inp(v, 'hu', 'date')}</td>
+          <td data-l="SP fällig">${inp(v, 'sp', 'date')}</td>
+          <td data-l="Letzter Service">${inp(v, 'letzterService', 'date')}</td>` : `
           <td data-l="ID" class="mono"><b>${esc(v.code || '—')}</b></td>
           <td data-l="Fahrzeug"><b>${esc(v.typ || '—')}</b>${v._pending ? ' <span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</td>
           <td data-l="Kennzeichen" class="mono">${esc(v.kz || '—')}</td>
@@ -1183,25 +1193,53 @@ function renderFleet() {
           <td data-l="UVV fällig">${due(v, 'uvv')}</td>
           <td data-l="HU fällig">${due(v, 'hu')}</td>
           <td data-l="SP fällig">${due(v, 'sp')}</td>
-          <td data-l="Letzter Service">${svc(v)}</td>
+          <td data-l="Letzter Service">${svc(v)}</td>`;
+  $('fleet-list').innerHTML = `
+    ${edit ? '<div class="fe-bar no-print">✎ <b>Bearbeitungsmodus</b> – Änderungen werden automatisch gespeichert. Zum Beenden den Stift erneut antippen.</div>' : ''}
+    <table class="fleet-table${edit ? ' fe-mode' : ''}">
+      <thead><tr><th>ID</th><th>Fahrzeug</th><th>Kennzeichen</th><th>Werk-Nr.</th><th${hl('uvv')}>UVV</th><th${hl('hu')}>HU</th><th${hl('sp')}>SP</th><th${hl('service')}>Letzter Service</th></tr></thead>
+      <tbody>${list.map(v => `
+        <tr class="fleet-row${S.selVeh === v.id ? ' sel' : ''}" data-vid="${esc(v.id)}" tabindex="0" aria-selected="${S.selVeh === v.id}">${cells(v)}
         </tr>`).join('')}
       </tbody>
     </table>
-    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen zum Markieren, dann „${amAdmin() ? 'Bearbeiten' : 'Details'}“ (oder doppelt antippen).</p>`;
+    <p class="fleet-legend no-print"><span class="due over">rot</span> überfällig · <span class="due soon">gelb</span> innerhalb von 30 Tagen fällig · Service gilt ${SERVICE_MONTHS} Monate nach dem letzten als fällig · Fahrzeug antippen zum Markieren, doppelt antippen für ${amAdmin() ? 'Details und Bearbeiten · ✎ oben bearbeitet das ganze Blatt' : 'Details'}.</p>`;
+  const pen = $('btn-fleet-edit'); if (pen) { pen.classList.toggle('on', edit); pen.setAttribute('aria-pressed', edit); pen.title = edit ? 'Bearbeiten beenden' : 'Fuhrpark bearbeiten'; }
 }
-function updateVehEditBtn() {
-  const b = $('btn-veh-edit'); if (!b) return;
-  const v = S.selVeh && S.vehicles.find(x => x.id === S.selVeh);
-  b.disabled = !v;
-  b.textContent = (amAdmin() ? '✎ Bearbeiten' : 'Details') + (v ? ': ' + (v.code || v.typ || '') : '');
-  b.title = v ? vehicleLabel(v) : 'Zuerst ein Fahrzeug in der Liste antippen';
+/* ---------- Fuhrpark direkt im Blatt bearbeiten ---------- */
+const feTimers = {};
+function toggleFleetEdit(on) {
+  if (!amAdmin()) return;
+  const next = on === undefined ? !S.fleetEdit : on;
+  if (!next) flushFleetEdit();
+  S.fleetEdit = next; renderFleet();
+  if (next) showToast('Bearbeitungsmodus an – Änderungen werden automatisch gespeichert');
 }
+function onFleetInput(t) {
+  const vid = t.dataset.vid, f = t.dataset.fe;
+  if (!S.fleetEdit || !amAdmin()) return;
+  (S.fePending[vid] = S.fePending[vid] || {})[f] = t.value.trim();
+  if (f === 'typ') t.classList.toggle('fe-err', !t.value.trim());
+  clearTimeout(feTimers[vid]); feTimers[vid] = setTimeout(() => saveFleetRow(vid), 700);
+}
+function saveFleetRow(vid) {
+  clearTimeout(feTimers[vid]); delete feTimers[vid];
+  const p = S.fePending[vid]; if (!p) return;
+  const v = S.vehicles.find(x => x.id === vid); if (!v) { delete S.fePending[vid]; return; }
+  const data = {};
+  VEHICLE_FIELDS.forEach(f => { data[f] = p[f] !== undefined ? p[f] : (v[f] || ''); });
+  if (!data.typ) { showToast('„Fahrzeug / Typ“ darf nicht leer sein – nicht gespeichert'); return; }
+  if (v.letzterServiceVon && data.letzterService === v.letzterService) data.letzterServiceVon = v.letzterServiceVon;
+  delete S.fePending[vid];
+  Object.assign(v, data);
+  S.store.saveVehicle(vid, data, S.me).catch((err) => { if (err && err.code === 'permission-denied') adminRejected(); });
+}
+function flushFleetEdit() { Object.keys(S.fePending).forEach(saveFleetRow); }
 function selectVehicle(id) {
   S.selVeh = S.selVeh === id ? null : id;
   document.querySelectorAll('#fleet-list .fleet-row').forEach(r => {
     const on = r.dataset.vid === S.selVeh; r.classList.toggle('sel', on); r.setAttribute('aria-selected', on);
   });
-  updateVehEditBtn();
 }
 
 /* Fahrzeug anzeigen / bearbeiten (bearbeiten nur Admins) */
@@ -1376,6 +1414,7 @@ function cleanTemplate(tpl) {
 
 /* ---------- Ansicht wechseln ---------- */
 function render() {
+  if (S.fleetEdit && (S.view !== 'fleet' || !amAdmin())) { flushFleetEdit(); S.fleetEdit = false; }
   if (S.view === 'reorder' && !amAdmin()) S.view = 'stock';   // Bestellvorschläge nur für SE/KÖ
   if (S.view === 'list') {
     if (S.edit) renderEdit();
@@ -2370,7 +2409,7 @@ const actions = {
     showToast(`„${title}“ kopiert – in einer anderen Kategorie einfügbar`);
   },
   'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
-  'edit-vehicle': () => { if (S.selVeh && S.vehicles.some(v => v.id === S.selVeh)) openVehicle(S.selVeh); },
+  'fleet-edit': () => toggleFleetEdit(),
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
   'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
@@ -2471,7 +2510,7 @@ document.addEventListener('click', (e) => {
   const orow = e.target.closest('.order-row');
   if (orow) { openOrder(orow.dataset.oid); return; }
   const vrow = e.target.closest('.fleet-row');
-  if (vrow) { selectVehicle(vrow.dataset.vid); return; }
+  if (vrow) { if (!e.target.closest('.fe-in')) selectVehicle(vrow.dataset.vid); return; }
   const row = e.target.closest('.arch-row');
   if (row) { S.openId = row.dataset.pid; S.view = 'protocol'; render(); window.scrollTo(0, 0); return; }
 
@@ -2490,6 +2529,9 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('fleet-list').addEventListener('input', (e) => { if (e.target.classList.contains('fe-in')) onFleetInput(e.target); });
+$('fleet-list').addEventListener('change', (e) => { if (e.target.classList.contains('fe-in')) { onFleetInput(e.target); saveFleetRow(e.target.dataset.vid); } });
+$('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.contains('fe-in') && S.fePending[e.target.dataset.vid]) saveFleetRow(e.target.dataset.vid); });
 ['fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
 $('orders-status').addEventListener('change', renderOrders);
@@ -2834,7 +2876,9 @@ async function start() {
     S.vehicles = list;
     fillVehicleList();
     $('fleet-count').textContent = list.length;
-    if (S.view === 'fleet' && $('setup').classList.contains('hidden')) renderFleet();
+    // im Bearbeitungsmodus nicht neu zeichnen, solange getippt wird (sonst springt der Cursor)
+    const typing = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('fe-in');
+    if (S.view === 'fleet' && $('setup').classList.contains('hidden') && !typing) renderFleet();
     if (S.view === 'list' && !S.edit && draft.header.fId && !draft.header.vehId) { syncHeaderVehicle(); saveDraft(); }
   }, (err) => {
     S.fleetError = err && err.code === 'permission-denied' ? 'rules' : 'other';
@@ -2873,7 +2917,7 @@ function busyForReload() {
   const overlayOpen = !$('setup').classList.contains('hidden') || $('confirm-modal-overlay').classList.contains('show');
   const a = document.activeElement;
   const typing = a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-  return S.edit || S.protoEdit || S.artDirty || overlayOpen || typing || !!touchDrag;
+  return S.edit || S.protoEdit || S.artDirty || S.fleetEdit || overlayOpen || typing || !!touchDrag;
 }
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.KDS_NO_SW) {

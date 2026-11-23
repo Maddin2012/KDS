@@ -94,6 +94,9 @@ ID, Typ, Kennzeichen, Werk-Nr., Baujahr, FIN, **UVV/HU/SP fällig am** und
 von 30 Tagen). Filter oben: **Prüfung** (SP, HU, UVV, Service – sortiert dann nach
 Fälligkeit, früheste zuerst) und **Fälligkeit** (fällig, nur überfällig, nur in 30 Tagen,
 ohne Datum). Service gilt 12 Monate nach dem letzten Service als fällig.
+Fahrzeug antippen markiert es, doppelt antippen öffnet die Details. Admins schalten mit
+dem **Stift ✎** oben das ganze Blatt in den Bearbeitungsmodus: alle Felder sind direkt
+änderbar und speichern sich selbst; Stift erneut antippen beendet ihn.
 Fahrzeuge anlegen/ändern/löschen nur Admins; alle können ansehen.
 Die alte Fahrzeugliste lässt sich über ⚙ → „Daten aus alter Version übernehmen“
 einlesen (nur neue Fahrzeuge werden angelegt).

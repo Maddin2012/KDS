@@ -939,3 +939,16 @@
   @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .fleet-row.sel td { background:#3b2a16 !important } }
   @media (max-width:760px) { .fleet-row.sel { box-shadow:0 0 0 2px var(--orange) } .fleet-row.sel td:first-child { box-shadow:none } }
   #btn-veh-edit:disabled { opacity:.5; cursor:not-allowed }
+  /* Fuhrpark: Stift-Knopf und Bearbeitungsmodus */
+  .btn-pen { font-size:20px; line-height:1; padding-left:14px; padding-right:14px; color:var(--black) !important; border-color:var(--black) !important; background:rgba(255,255,255,.25) !important }
+  .btn-pen:hover { background:rgba(255,255,255,.5) !important }
+  .btn-pen.on { background:var(--black) !important; color:var(--orange) !important; border-color:var(--black) !important }
+  .fe-bar { background:var(--orange-lt); border:1px solid var(--orange-bd); color:var(--text); border-radius:8px; padding:8px 12px; font-size:14px; margin-bottom:10px }
+  .fe-mode td { padding:5px 6px }
+  .fe-in { width:100%; min-width:0; border:1px solid var(--line); border-radius:5px; padding:6px 7px; font-size:14px; background:var(--surface); color:var(--text) }
+  .fe-in.mono { font-family:'IBM Plex Mono',monospace }
+  .fe-in:focus { outline:none; border-color:var(--orange); box-shadow:0 0 0 2px var(--orange-lt) }
+  .fe-in.fe-err { border-color:#b42318; background:#fdecea }
+  .fe-mode .fleet-row { cursor:default }
+  html[data-theme="dark"] .fe-bar { background:#3b2a16; border-color:#5a3d1c }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .fe-bar { background:#3b2a16; border-color:#5a3d1c } }
