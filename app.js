@@ -148,7 +148,7 @@ function promptModal(message, okLabel, { value = '', type = 'text', inputmode = 
    Die Gruppe der gerade geöffneten Seite ist immer aufgeklappt. */
 /* Gruppen der geöffneten Seite (äußere zuerst) – diese bleiben immer aufgeklappt */
 const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view === 'reorder') ? ['lager']
-  : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'service']
+  : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'orders', 'service']
   : (S.view === 'orders' || S.view === 'order') ? ['werkstatt', 'orders']
   : S.view === 'fleet' ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
@@ -191,7 +191,7 @@ function renderNav() {
   });
   $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
   $('nav-fleet').classList.toggle('active', S.view === 'fleet');
-  document.querySelectorAll('#nav-orders .nav-item').forEach(n => n.classList.toggle('active',
+  document.querySelectorAll('#nav-orders .nav-item[data-ostatus]').forEach(n => n.classList.toggle('active',
     (S.view === 'orders' || S.view === 'order') && (n.dataset.ostatus || '') === S.ordersFilter));
   $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
   $('nav-stock').classList.toggle('active', S.view === 'stock' || S.view === 'article');

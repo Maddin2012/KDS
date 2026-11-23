@@ -49,15 +49,6 @@
           <span>Werkstatt</span><span class="chev" aria-hidden="true">▾</span>
         </button>
         <div class="nav-group-b">
-          <div class="nav-group nav-sub" data-group="service">
-            <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="service" aria-expanded="true">
-              <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
-            </button>
-            <div class="nav-group-b">
-              <div id="nav-cats"><!-- Kategorien per Script --></div>
-              <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
-            </div>
-          </div>
           <div class="nav-group nav-sub" data-group="orders">
             <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="orders" aria-expanded="true">
               <span>Werkstattaufträge</span><span class="chev" aria-hidden="true">▾</span>
@@ -67,6 +58,15 @@
               <div class="nav-item" data-view="orders" data-ostatus="offen">Offen</div>
               <div class="nav-item" data-view="orders" data-ostatus="arbeit">In Arbeit</div>
               <div class="nav-item" data-view="orders" data-ostatus="fertig">Abgeschlossen</div>
+              <div class="nav-group nav-sub" data-group="service">
+                <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="service" aria-expanded="true">
+                  <span>Serviceliste</span><span class="chev" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav-group-b">
+                  <div id="nav-cats"><!-- Kategorien per Script --></div>
+                  <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
