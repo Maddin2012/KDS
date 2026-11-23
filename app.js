@@ -35,7 +35,10 @@ const S = {
   articles: [],             // Lager
   openArticleId: null,
   selVeh: null,             // im Fuhrpark markiertes Fahrzeug
-  ordersFilter: '',         // Werkstattaufträge: '' alle | offen | arbeit | fertig (Auswahl in der Seitenleiste)
+  ordersFilter: '',
+  openVehId: null,          // geöffnete Fahrzeugakte
+  akteTab: 'historie',
+  akte: {}, akteNotes: [], akteFiles: [],         // Werkstattaufträge: '' alle | offen | arbeit | fertig (Auswahl in der Seitenleiste)
   fleetEdit: false,         // Fuhrpark-Blatt im Bearbeitungsmodus (Stift)
   fePending: {},            // noch nicht gespeicherte Eingaben im Blatt: { vid: { feld: wert } }
   expandedArt: null,
@@ -150,7 +153,7 @@ function promptModal(message, okLabel, { value = '', type = 'text', inputmode = 
 const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view === 'reorder') ? ['lager']
   : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'orders', 'service']
   : (S.view === 'orders' || S.view === 'order') ? ['werkstatt', 'orders']
-  : S.view === 'fleet' ? ['werkstatt'] : [];
+  : (S.view === 'fleet' || S.view === 'vehicle') ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
 /* Startseite: alle Gruppen zu, nur die Hauptkategorien (Werkstatt, Lager) sichtbar */
@@ -190,7 +193,7 @@ function renderNav() {
     nav.appendChild(el);
   });
   $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
-  $('nav-fleet').classList.toggle('active', S.view === 'fleet');
+  $('nav-fleet').classList.toggle('active', S.view === 'fleet' || S.view === 'vehicle');
   document.querySelectorAll('#nav-orders .nav-item[data-ostatus]').forEach(n => n.classList.toggle('active',
     (S.view === 'orders' || S.view === 'order') && (n.dataset.ostatus || '') === S.ordersFilter));
   $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
@@ -224,6 +227,7 @@ function renderChrome() {
   if (mode === 'home') title = 'Startseite';
   else if (mode === 'archive') title = 'Archiv';
   else if (mode === 'fleet') title = 'Fuhrpark';
+  else if (mode === 'vehicle') { const v = S.vehicles.find(x => x.id === S.openVehId); title = 'Fahrzeugakte ' + (v ? (v.code || v.typ || '') : ''); }
   else if (mode === 'orders') title = 'Werkstattaufträge' + (S.ordersFilter ? ' · ' + ORDER_STATUS[S.ordersFilter] : '');
   else if (mode === 'order') title = 'Auftrag ' + ((S.orderEdit && S.orderEdit.nr) || '');
   else if (mode === 'stock') title = 'Lager';
@@ -234,7 +238,7 @@ function renderChrome() {
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
-  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : mode === 'fleet' ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-home').classList.toggle('hidden', S.view !== 'home');
@@ -243,12 +247,13 @@ function renderChrome() {
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
+  $('view-vehicle').classList.toggle('hidden', S.view !== 'vehicle');
   $('view-orders').classList.toggle('hidden', S.view !== 'orders');
   $('view-order').classList.toggle('hidden', S.view !== 'order');
   $('view-stock').classList.toggle('hidden', S.view !== 'stock');
   $('view-article').classList.toggle('hidden', S.view !== 'article');
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
-  $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
+  $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   $('edit-tools').classList.toggle('hidden', mode !== 'edit');
   $('monteure-box').classList.toggle('hidden', mode === 'edit');
@@ -1007,10 +1012,10 @@ function addOrderRow() {
   all[all.length - 1].focus();
 }
 // Fuhrpark: Doppelklick bzw. Enter auf einer Zeile öffnet das Fahrzeug direkt
-document.addEventListener('dblclick', (e) => { if (e.target.closest && e.target.closest('.fe-in')) return; const r = e.target.closest && e.target.closest('#fleet-list .fleet-row'); if (r) { S.selVeh = r.dataset.vid; openVehicle(r.dataset.vid); } });
+document.addEventListener('dblclick', (e) => { if (e.target.closest && e.target.closest('.fe-in')) return; const r = e.target.closest && e.target.closest('#fleet-list .fleet-row'); if (r) { S.selVeh = r.dataset.vid; openAkte(r.dataset.vid); } });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fe-in')) { e.target.blur(); return; }
-  if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fleet-row')) { S.selVeh = e.target.dataset.vid; openVehicle(e.target.dataset.vid); }
+  if (e.key === 'Enter' && e.target.matches && e.target.matches('#fleet-list .fleet-row')) { S.selVeh = e.target.dataset.vid; openAkte(e.target.dataset.vid); }
 });
 // Enter in „Arbeit“ = neue Position (Umschalt+Enter = neue Zeile im Feld)
 document.addEventListener('keydown', (e) => {
@@ -1251,6 +1256,221 @@ function fleetGroups() {
   const used = [...new Set(S.vehicles.map(v => v.gruppe || ''))];
   return [...FLEET_GROUPS.filter(g => used.includes(g)), ...used.filter(g => !FLEET_GROUPS.includes(g)).sort(deSort)];
 }
+/* =====================================================================
+   Fahrzeugakte: Historie (Aufträge, Servicelisten), Ersatzteile, Ölsorten,
+   Bilder, Dokumente, Liebherr-Arbeitsberichte, Notizen
+   ===================================================================== */
+const AKTE_TABS = [['historie', 'Historie'], ['teile', 'Ersatzteile'], ['oele', 'Ölsorten'], ['bild', 'Bilder'],
+  ['dok', 'Dokumente'], ['lbh', 'Liebherr-Arbeitsberichte'], ['notizen', 'Notizen']];
+const TEILE_COLS = [['name', 'Bezeichnung'], ['nr', 'Teile-Nr.'], ['lieferant', 'Hersteller / Lieferant'], ['menge', 'Menge'], ['bem', 'Bemerkung']];
+const OELE_COLS = [['bg', 'Baugruppe'], ['sorte', 'Ölsorte / Spezifikation'], ['menge', 'Füllmenge'], ['intervall', 'Wechselintervall'], ['bem', 'Bemerkung']];
+const OEL_BAUGRUPPEN = ['Motor', 'Getriebe', 'Verteilergetriebe', 'Achsen', 'Hydraulik', 'Drehwerk', 'Hubwerk', 'Kühlmittel', 'Bremse'];
+let akteUnsubs = [], akteSubVid = null;
+function subscribeAkte(vid) {
+  closeAkte(); akteSubVid = vid;
+  S.akte = {}; S.akteNotes = []; S.akteFiles = [];
+  const re = () => { if (S.view === 'vehicle' && S.openVehId === vid && !akteTyping()) renderAkte(); };
+  akteUnsubs = [
+    S.store.onAkte(vid, (d) => {
+      d = d || {};
+      // eigene, noch nicht gespeicherte Eingaben nicht vom Server-Stand überschreiben
+      if (S.akteDirty || akteSaveTimer || akteTyping()) S.akte = { ...d, teile: S.akte.teile || d.teile, oele: S.akte.oele || d.oele };
+      else { S.akte = d; re(); }
+    }),
+    S.store.onAkteNotes(vid, (l) => { S.akteNotes = l; re(); }),
+    S.store.onAkteFiles(vid, (l) => { S.akteFiles = l; re(); }),
+  ];
+}
+function closeAkte() { flushAkteSave(); akteSubVid = null; akteUnsubs.forEach(u => { try { u(); } catch (e) { /* schon beendet */ } }); akteUnsubs = []; }
+const akteTyping = () => { const a = document.activeElement; return a && $('view-vehicle').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+function openAkte(vid) {
+  if (!S.vehicles.some(v => v.id === vid)) return;
+  flushFleetEdit();
+  subscribeAkte(vid);
+  S.openVehId = vid; S.akteTab = 'historie'; S.view = 'vehicle'; render(); window.scrollTo(0, 0);
+}
+/* Aufträge und Servicelisten dieses Fahrzeugs – über die Verknüpfung oder (z. B. nach dem
+   Excel-Import mit neuen Fahrzeug-Kennungen) über ID bzw. Kennzeichen */
+function vehicleHistory(v) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+  const sameCode = (c) => v.code && norm(c) === norm(v.code), sameKz = (k) => v.kz && norm(k) === norm(v.kz);
+  const orders = S.orders.filter(o => o.vehId === v.id || sameCode(o.code) || sameKz(o.kz)).map(o => ({
+    kind: 'auftrag', id: o.id, ts: o.created || 0, day: o.datum || '', title: 'Auftrag ' + (o.nr || ''),
+    sub: [(o.rows || []).map(r => r.text).filter(Boolean).slice(0, 3).join(' · '), (o.crew || []).join(', ')].filter(Boolean).join(' — '),
+    badge: statusBadge(o.status || 'offen') }));
+  const protos = S.protocols.filter(p => { const h = p.header || {};
+    if (h.vehId === v.id) return true;
+    const f = norm(h.fId); return (v.code && (f === norm(v.code) || f.startsWith(norm(v.code) + '·'))) || sameKz(h.kz) || (v.kz && f.includes(norm(v.kz)));
+  }).map(p => { const st = protoStats(p); return {
+    kind: 'protokoll', id: p.id, ts: p.ts || 0, day: (p.header && p.header.fDate) || '', title: 'Serviceliste ' + (p.category || ''),
+    sub: [(p.monteure || []).join(', '), p.header && p.header.fKm ? 'Km ' + p.header.fKm : '', p.header && p.header.fOw ? 'Std. OW ' + p.header.fOw : ''].filter(Boolean).join(' · '),
+    badge: st.open ? `<span class="badge bad">${st.open} n.i.O.</span>` : '<span class="badge ok">i.O.</span>' }; });
+  return [...orders, ...protos].sort((x, y) => (y.day || '').localeCompare(x.day || '') || y.ts - x.ts);
+}
+function renderAkte() {
+  const v = S.vehicles.find(x => x.id === S.openVehId);
+  if (!v) { closeAkte(); S.view = 'fleet'; render(); return; }
+  const admin = amAdmin(), tab = S.akteTab;
+  const hist = vehicleHistory(v);
+  const cnt = { historie: hist.length, teile: (S.akte.teile || []).length, oele: (S.akte.oele || []).length,
+    bild: S.akteFiles.filter(f => f.kind === 'bild').length, dok: S.akteFiles.filter(f => f.kind === 'dok').length,
+    lbh: S.akteFiles.filter(f => f.kind === 'lbh').length, notizen: S.akteNotes.length };
+  const due = (label, iso) => { const st = dueState(iso); return `<div class="ak-f"><label>${label}</label><span class="due ${st}">${esc(fmtDay(iso) || '—')}</span></div>`; };
+  const fld = (label, val, cls = '') => `<div class="ak-f"><label>${label}</label><b class="${cls}">${esc(val || '—')}</b></div>`;
+  $('view-vehicle').innerHTML = `
+    <div class="proto-banner no-print">
+      <button class="btn-sec" data-act="back-fleet" type="button">← Fuhrpark</button>
+      <div class="actions">${admin ? '<button class="btn-sec" data-act="akte-stamm" type="button">✎ Stammdaten</button>' : ''}</div>
+    </div>
+    <div class="box ak-head">
+      <div class="ak-title"><span class="ak-id mono">${esc(v.code || '—')}</span><div><h3>${esc([v.hersteller, v.typ].filter(Boolean).join(' '))}</h3>
+        <span class="proto-meta">${esc([v.gruppe, v.kz].filter(Boolean).join(' · '))}</span></div></div>
+      <div class="ak-grid">
+        ${fld('Kennzeichen', v.kz, 'mono')}${fld('Fahrer', v.fahrer)}${fld('FIN', v.fin, 'mono')}${fld('Werk-Nr.', v.werk, 'mono')}${fld('Baujahr', v.baujahr, 'mono')}
+        ${due('UVV fällig', v.uvv)}${due('HU fällig', v.hu)}${due('SP fällig', v.sp)}
+        <div class="ak-f"><label>Letzter Service</label><span class="due ${dueState(serviceDue(v.letzterService))}">${esc(fmtDay(v.letzterService) || '—')}</span></div>
+      </div>
+    </div>
+    <div class="ak-tabs no-print" role="tablist">${AKTE_TABS.map(([k, l]) => `<button type="button" role="tab" class="ak-tab${k === tab ? ' on' : ''}" data-act="akte-tab" data-tab="${k}" aria-selected="${k === tab}">${l}${cnt[k] ? ` <small>${cnt[k]}</small>` : ''}</button>`).join('')}</div>
+    <div class="box ak-body">
+      <div class="sec-title"><div class="title-left"><span>${esc(AKTE_TABS.find(t => t[0] === tab)[1])}</span></div><div id="ak-tools"></div></div>
+      <div id="ak-content"></div>
+    </div>`;
+  renderAkteTab(v, hist);
+  renderChrome();
+}
+function renderAkteTab(v, hist) {
+  const tab = S.akteTab, admin = amAdmin(), box = $('ak-content'), tools = $('ak-tools');
+  const fmtTs = (ts) => new Date(ts || 0).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  tools.innerHTML = '';
+  if (tab === 'historie') {
+    box.innerHTML = hist.length ? `<div class="ak-hist">${hist.map(h => `
+      <button type="button" class="ak-h" data-act="akte-open" data-kind="${h.kind}" data-id="${esc(h.id)}">
+        <span class="ak-h-day mono">${esc(fmtDay(h.day) || new Date(h.ts).toLocaleDateString('de-DE'))}</span>
+        <span class="ak-h-kind ${h.kind}">${h.kind === 'auftrag' ? 'Auftrag' : 'Serviceliste'}</span>
+        <span class="ak-h-main"><b>${esc(h.title)}</b><small>${esc(h.sub)}</small></span>
+        <span>${h.badge}</span>
+      </button>`).join('')}</div>`
+      : '<p class="proto-meta">Für dieses Fahrzeug gibt es noch keine Aufträge oder abgeschlossenen Servicelisten.</p>';
+    tools.innerHTML = '<button class="btn-sec no-print" data-act="akte-new-order" type="button">+ Neuer Auftrag</button>';
+    return;
+  }
+  if (tab === 'teile' || tab === 'oele') {
+    const cols = tab === 'teile' ? TEILE_COLS : OELE_COLS, rows = S.akte[tab] || [];
+    if (admin) tools.innerHTML = `<button class="btn-sec no-print" data-act="akte-add-row" type="button">+ ${tab === 'teile' ? 'Ersatzteil' : 'Ölsorte'}</button>`;
+    box.innerHTML = rows.length ? `<table class="service-table ak-table">
+      <thead><tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}${admin ? '<th class="no-print"></th>' : ''}</tr></thead>
+      <tbody>${rows.map((r, i) => `<tr>${cols.map(([k, l]) => `<td data-l="${l}">${admin
+        ? `<input class="ak-in" data-ak="${k}" data-idx="${i}" value="${esc(r[k] || '')}" ${k === 'bg' ? 'list="ak-bg"' : ''} autocomplete="off">`
+        : esc(r[k] || '—')}</td>`).join('')}${admin ? `<td class="no-print"><button class="btn-del-row" data-act="akte-del-row" data-idx="${i}" title="Entfernen">✕</button></td>` : ''}</tr>`).join('')}</tbody></table>
+      <datalist id="ak-bg">${OEL_BAUGRUPPEN.map(b => `<option value="${b}">`).join('')}</datalist>
+      ${admin ? '<p class="proto-meta no-print" id="ak-saved">Änderungen werden automatisch gespeichert.</p>' : ''}`
+      : `<p class="proto-meta">${tab === 'teile' ? 'Noch keine Ersatzteile hinterlegt.' : 'Noch keine Ölsorten hinterlegt.'}${admin ? '' : ' Pflegen können das die Admins (SE, KÖ).'}</p>`;
+    return;
+  }
+  if (tab === 'notizen') {
+    box.innerHTML = `<div class="ak-note-new no-print">
+        <textarea id="ak-note" class="o-ta o-notes" rows="3" placeholder="Notiz zum Fahrzeug, z. B. Auffälligkeit, Absprache, Hinweis …"></textarea>
+        <button class="btn-sec" data-act="akte-add-note" type="button">Notiz speichern</button></div>
+      ${S.akteNotes.length ? S.akteNotes.map(n => `<div class="ak-note"><div class="ak-note-h"><span>${esc(fmtTs(n.ts))} · <b>${esc(n.von || '')}</b></span>
+        ${admin || n.uid === S.store.uid ? `<button class="btn-del-row no-print" data-act="akte-del-note" data-id="${esc(n.id)}" title="Löschen">✕</button>` : ''}</div>
+        <div class="ak-note-t">${esc(n.text)}</div></div>`).join('') : '<p class="proto-meta">Noch keine Notizen.</p>'}`;
+    return;
+  }
+  // Bilder, Dokumente, Liebherr-Arbeitsberichte
+  const files = S.akteFiles.filter(f => f.kind === tab);
+  tools.innerHTML = `<button class="btn-sec no-print" data-act="akte-upload" type="button">+ ${tab === 'bild' ? 'Bilder' : 'Datei'} hinzufügen</button>`;
+  const del = (f) => (admin || f.uid === S.store.uid) ? `<button class="btn-del-row no-print" data-act="akte-del-file" data-id="${esc(f.id)}" title="Löschen">✕</button>` : '';
+  const up = S.akteUpload ? `<p class="ak-up">${esc(S.akteUpload)}</p>` : '';
+  if (tab === 'bild') {
+    box.innerHTML = up + (files.length ? `<div class="ak-gal">${files.map(f => `<figure class="ak-img">
+        <button type="button" data-act="akte-view" data-id="${esc(f.id)}" title="${esc(f.name)}"><img src="${f.thumb || ''}" alt="${esc(f.name)}" loading="lazy"></button>
+        <figcaption><span>${esc(fmtTs(f.ts))} · ${esc(f.von || '')}</span>${del(f)}</figcaption></figure>`).join('')}</div>`
+      : '<p class="proto-meta">Noch keine Bilder. Am Handy kann direkt mit der Kamera fotografiert werden.</p>');
+  } else {
+    box.innerHTML = up + (files.length ? `<div class="ak-files">${files.map(f => `<div class="ak-file">
+        <button type="button" class="ak-file-b" data-act="akte-view" data-id="${esc(f.id)}"><span class="ak-ext">${esc((f.name.split('.').pop() || 'DATEI').slice(0, 4).toUpperCase())}</span>
+          <span><b>${esc(f.name)}</b><small>${esc(fmtSize(f.size))} · ${esc(fmtTs(f.ts))} · ${esc(f.von || '')}</small></span></button>${del(f)}</div>`).join('')}</div>`
+      : `<p class="proto-meta">Noch keine ${tab === 'lbh' ? 'Liebherr-Arbeitsberichte' : 'Dokumente'}. PDF, Bilder, Word/Excel bis 15 MB.</p>`);
+  }
+}
+const fmtSize = (b) => !b ? '' : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+
+/* Ersatzteile / Ölsorten: Eingaben sammeln und kurz danach speichern (nur Admins) */
+let akteSaveTimer = null;
+function onAkteInput(t) {
+  if (!amAdmin()) return;
+  const tab = S.akteTab, rows = (S.akte[tab] = (S.akte[tab] || []).slice());
+  const i = +t.dataset.idx; rows[i] = { ...rows[i], [t.dataset.ak]: t.value };
+  S.akteDirty = true; const el = $('ak-saved'); if (el) el.textContent = 'wird gespeichert …';
+  clearTimeout(akteSaveTimer); akteSaveTimer = setTimeout(saveAkteNow, 700);
+}
+function saveAkteNow() {
+  clearTimeout(akteSaveTimer); akteSaveTimer = null;
+  if (!S.akteDirty || !S.openVehId || !amAdmin()) return;
+  S.akteDirty = false;
+  const clean = (l) => (l || []).map(r => Object.fromEntries(Object.entries(r).map(([k, x]) => [k, String(x || '').trim()])));
+  S.store.saveAkte(S.openVehId, { teile: clean(S.akte.teile), oele: clean(S.akte.oele) }, S.me)
+    .then(() => { const el = $('ak-saved'); if (el && !S.akteDirty) el.textContent = 'gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); })
+    .catch((err) => { if (err && err.code === 'permission-denied') adminRejected(); else showToast('Speichern fehlgeschlagen'); });
+}
+function flushAkteSave() { if (akteSaveTimer) saveAkteNow(); }
+
+/* Dateien: Bilder werden verkleinert (max. 1600 px), alles andere bis 15 MB unverändert abgelegt */
+const bufToB64 = (buf) => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+function loadImg(file) { return new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); res(im); }; im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('Bild konnte nicht gelesen werden')); }; im.src = u; }); }
+function scaleImg(im, max, q) {
+  const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+  c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q);
+}
+async function uploadAkteFiles(files) {
+  const vid = S.openVehId, kind = S.akteTab; if (!vid || !['bild', 'dok', 'lbh'].includes(kind)) return;
+  let done = 0;
+  for (const file of files) {
+    try {
+      S.akteUpload = `Lade hoch: ${file.name} …`; renderAkte();
+      let meta, b64;
+      if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+        const im = await loadImg(file);
+        const full = kind === 'bild' ? scaleImg(im, 1600, 0.82) : null;
+        b64 = full ? full.split(',')[1] : bufToB64(await file.arrayBuffer());
+        meta = { kind, name: full ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name, type: full ? 'image/jpeg' : file.type, size: Math.round(b64.length * 0.75), thumb: scaleImg(im, 320, 0.7) };
+      } else {
+        if (kind === 'bild') throw new Error(`„${file.name}“ ist kein Bild`);
+        if (file.size > 15 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 15 MB`);
+        b64 = bufToB64(await file.arrayBuffer());
+        meta = { kind, name: file.name, type: file.type || 'application/octet-stream', size: file.size };
+      }
+      await S.store.addAkteFile(vid, meta, b64, S.me, (p) => { S.akteUpload = `Lade hoch: ${file.name} … ${Math.round(p * 100)} %`; const el = document.querySelector('.ak-up'); if (el) el.textContent = S.akteUpload; });
+      done++;
+    } catch (e) { showToast(e.message || 'Hochladen fehlgeschlagen'); }
+  }
+  S.akteUpload = ''; if (S.view === 'vehicle') renderAkte();
+  if (done) showToast(done === 1 ? 'Datei gespeichert' : done + ' Dateien gespeichert');
+}
+async function viewAkteFile(fid) {
+  const f = S.akteFiles.find(x => x.id === fid); if (!f) return;
+  showToast('Wird geladen …');
+  try {
+    const b64 = await S.store.getAkteFile(S.openVehId, fid);
+    const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([u], { type: f.type || 'application/octet-stream' }));
+    if (f.kind === 'bild' || (f.type || '').startsWith('image/')) {
+      const ov = $('setup');
+      ov.innerHTML = `<div class="setup-card ak-lb"><img src="${url}" alt="${esc(f.name)}">
+        <div class="setup-back" style="display:flex;justify-content:space-between;gap:10px"><a class="link-btn" href="${url}" download="${esc(f.name)}">Herunterladen</a>
+        <button class="link-btn" data-v="close" type="button">Schließen</button></div></div>`;
+      ov.classList.remove('hidden');
+      ov.onclick = (e) => { if (e.target === ov || e.target.closest('[data-v="close"]')) { ov.classList.add('hidden'); ov.onclick = null; URL.revokeObjectURL(url); } };
+    } else {
+      const a = document.createElement('a'); a.href = url; a.download = f.name;
+      if ((f.type || '') === 'application/pdf') { a.target = '_blank'; a.removeAttribute('download'); }
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  } catch (e) { showToast(e.message || 'Datei konnte nicht geladen werden'); }
+}
+
 /* ---------- Fuhrpark direkt im Blatt bearbeiten ---------- */
 const feTimers = {};
 function toggleFleetEdit(on) {
@@ -1472,6 +1692,7 @@ function render() {
   } else if (S.view === 'archive') renderArchive();
   else if (S.view === 'protocol') renderProtocol();
   else if (S.view === 'fleet') renderFleet();
+  else if (S.view === 'vehicle') renderAkte();
   else if (S.view === 'orders') renderOrders();
   else if (S.view === 'order') renderOrder();
   else if (S.view === 'stock') renderStock();
@@ -2527,6 +2748,25 @@ const actions = {
   },
   'add-vehicle': () => { if (amAdmin()) openVehicle(null); },
   'fleet-edit': () => toggleFleetEdit(),
+  'back-fleet': () => { closeAkte(); S.view = 'fleet'; render(); window.scrollTo(0, 0); },
+  'akte-stamm': () => { if (amAdmin()) openVehicle(S.openVehId); },
+  'akte-tab': (btn) => { flushAkteSave(); S.akteTab = btn.dataset.tab; renderAkte(); },
+  'akte-open': (btn) => { if (btn.dataset.kind === 'auftrag') openOrder(btn.dataset.id); else { S.openId = btn.dataset.id; S.view = 'protocol'; render(); window.scrollTo(0, 0); } },
+  'akte-new-order': () => { const v = S.vehicles.find(x => x.id === S.openVehId); if (v) openNewOrder({ vehId: v.id }); },
+  'akte-add-row': () => { if (!amAdmin()) return; const t = S.akteTab; S.akte[t] = [...(S.akte[t] || []), {}]; S.akteDirty = true; saveAkteNow(); renderAkte();
+    const ins = $('view-vehicle').querySelectorAll('.ak-in'); if (ins.length) ins[ins.length - (t === 'teile' ? TEILE_COLS : OELE_COLS).length].focus(); },
+  'akte-del-row': async (btn) => { if (!amAdmin()) return; if (!(await confirmModal('Diese Zeile entfernen?', 'Entfernen'))) return;
+    const t = S.akteTab; S.akte[t] = (S.akte[t] || []).filter((_, i) => i !== +btn.dataset.idx); S.akteDirty = true; saveAkteNow(); renderAkte(); },
+  'akte-add-note': async () => { const tx = $('ak-note').value.trim(); if (!tx) { $('ak-note').focus(); return; }
+    try { await S.store.addAkteNote(S.openVehId, tx, S.me); $('ak-note').value = ''; showToast('Notiz gespeichert'); } catch (e) { showToast('Notiz konnte nicht gespeichert werden'); } },
+  'akte-del-note': async (btn) => { if (!(await confirmModal('Notiz löschen?', 'Löschen'))) return; S.store.deleteAkteNote(S.openVehId, btn.dataset.id).catch(() => showToast('Löschen fehlgeschlagen')); },
+  'akte-upload': () => { const i = $('akte-file'); i.value = '';
+    i.accept = S.akteTab === 'bild' ? 'image/*' : '.pdf,image/*,.doc,.docx,.xls,.xlsx,.txt,.csv';
+    i.click(); },
+  'akte-view': (btn) => viewAkteFile(btn.dataset.id),
+  'akte-del-file': async (btn) => { const f = S.akteFiles.find(x => x.id === btn.dataset.id); if (!f) return;
+    if (!(await confirmModal(`„${f.name}“ aus der Fahrzeugakte löschen?`, 'Löschen'))) return;
+    try { await S.store.deleteAkteFile(S.openVehId, f.id); showToast('Gelöscht'); } catch (e) { showToast(e.message || 'Löschen fehlgeschlagen'); } },
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
   'back-stock': () => { flushArtSave(); closeArticleSubs(); S.view = 'stock'; render(); window.scrollTo(0, 0); },
@@ -2650,6 +2890,9 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('akte-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadAkteFiles(fs); });
+$('view-vehicle').addEventListener('input', (e) => { if (e.target.classList.contains('ak-in')) onAkteInput(e.target); else if (e.target.id === 'ak-note') autoSize(e.target); });
+$('view-vehicle').addEventListener('focusout', (e) => { if (e.target.classList.contains('ak-in')) flushAkteSave(); });
 $('fleet-list').addEventListener('input', (e) => { if (e.target.classList.contains('fe-in')) onFleetInput(e.target); });
 $('fleet-list').addEventListener('change', (e) => { if (e.target.classList.contains('fe-in')) { onFleetInput(e.target); saveFleetRow(e.target.dataset.vid); } });
 $('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.contains('fe-in') && S.fePending[e.target.dataset.vid]) saveFleetRow(e.target.dataset.vid); });
@@ -2775,8 +3018,8 @@ let applyingNav = false;      // Navigation kommt gerade aus dem Verlauf → nic
 let layerEntries = 0;         // Verlaufseinträge für offene Fenster/Ebenen
 let ignorePops = 0;           // selbst ausgelöste „Zurück“-Schritte (Fenster per Knopf geschlossen)
 
-const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit, of: S.ordersFilter });
-const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit, n.view === 'orders' ? n.of || '' : ''].join('|');
+const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit, of: S.ordersFilter, vehId: S.openVehId || null, tab: S.akteTab });
+const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit, n.view === 'orders' ? n.of || '' : '', n.view === 'vehicle' ? (n.vehId || '') + ':' + (n.tab || '') : ''].join('|');
 
 /* Nach jedem Zeichnen: hat sich die Seite geändert, einen neuen Schritt eintragen */
 function syncHistory() {
@@ -2800,6 +3043,10 @@ function applyNav(nav) {
     if (nav.cat && nav.cat !== S.cat) { S.cat = nav.cat; lsSet('kds_cat', nav.cat); draft = loadDraft(nav.cat); }
     S.view = nav.view || 'list';
     if (nav.of !== undefined) S.ordersFilter = nav.of || '';
+    if (S.view === 'vehicle') {
+      if (nav.vehId && S.vehicles.some(v => v.id === nav.vehId)) { if (akteSubVid !== nav.vehId) subscribeAkte(nav.vehId); S.openVehId = nav.vehId; S.akteTab = nav.tab || 'historie'; }
+      else S.view = 'fleet';
+    } else closeAkte();
     S.openId = nav.openId;
     if (nav.edit && amAdmin() && S.view === 'list') { S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); }
     flushArtSave();
@@ -3054,7 +3301,7 @@ function busyForReload() {
   const overlayOpen = !$('setup').classList.contains('hidden') || $('confirm-modal-overlay').classList.contains('show');
   const a = document.activeElement;
   const typing = a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-  return S.edit || S.protoEdit || S.artDirty || S.fleetEdit || overlayOpen || typing || !!touchDrag;
+  return S.edit || S.protoEdit || S.artDirty || S.fleetEdit || S.akteDirty || !!S.akteUpload || overlayOpen || typing || !!touchDrag;
 }
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.KDS_NO_SW) {

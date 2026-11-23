@@ -184,6 +184,24 @@ export function createLocalStore() {
       write(K_FLEET, read(K_FLEET, []).map(v => v.id === id ? { ...v, letzterService: date, letzterServiceVon: by || '' } : v)); emitFleet();
     },
 
+    /* ---------- Fahrzeugakte (Probemodus: alles im Browser) ---------- */
+    _akte(vid) { return read('kds_local_akte_' + vid, { akte: {}, notes: [], files: [], data: {} }); },
+    _akteSave(vid, d) { if (!write('kds_local_akte_' + vid, d)) throw new Error('Speicher dieses Geräts voll'); (this._akteSubs || []).forEach(f => f(vid)); },
+    _akteSub(vid, fn) { this._akteSubs = this._akteSubs || []; const f = (v) => { if (v === vid) fn(); }; this._akteSubs.push(f); fn(); return () => { this._akteSubs = this._akteSubs.filter(x => x !== f); }; },
+    onAkte(vid, cb) { return this._akteSub(vid, () => cb(this._akte(vid).akte)); },
+    async saveAkte(vid, patch, by) { const d = this._akte(vid); d.akte = { ...d.akte, ...patch }; this._akteSave(vid, d); },
+    onAkteNotes(vid, cb) { return this._akteSub(vid, () => cb(this._akte(vid).notes.slice().sort((x, y) => y.ts - x.ts))); },
+    async addAkteNote(vid, text, by) { const d = this._akte(vid); d.notes.push({ id: 'n' + Date.now().toString(36), text, von: by || '', uid: 'local', ts: Date.now() }); this._akteSave(vid, d); },
+    async deleteAkteNote(vid, nid) { const d = this._akte(vid); d.notes = d.notes.filter(n => n.id !== nid); this._akteSave(vid, d); },
+    onAkteFiles(vid, cb) { return this._akteSub(vid, () => cb(this._akte(vid).files.slice().sort((x, y) => y.ts - x.ts))); },
+    async addAkteFile(vid, meta, b64, by, onProgress) {
+      const d = this._akte(vid), id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      d.files.push({ ...meta, id, von: by || '', uid: 'local', ts: Date.now() }); d.data[id] = b64;
+      this._akteSave(vid, d); if (onProgress) onProgress(1); return id;
+    },
+    async getAkteFile(vid, fid) { return this._akte(vid).data[fid] || ''; },
+    async deleteAkteFile(vid, fid) { const d = this._akte(vid); d.files = d.files.filter(f => f.id !== fid); delete d.data[fid]; this._akteSave(vid, d); },
+
     onProtocols(cb) { protoSubs.add(cb); cb(read(K_PROTO, [])); return () => protoSubs.delete(cb); },
 
     async addProtocol(p) {

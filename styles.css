@@ -998,3 +998,56 @@
   .home-menu { background:var(--black); color:#fff; border:0; border-radius:8px; padding:12px 22px; font-family:'Barlow Condensed',sans-serif;
     font-weight:800; font-size:16px; letter-spacing:.1em; text-transform:uppercase; align-items:center; gap:8px; cursor:pointer }
   .home-menu:hover { background:#2a2c2e }
+  /* ---------- Fahrzeugakte ---------- */
+  .ak-head { display:grid; gap:14px }
+  .ak-title { display:flex; gap:14px; align-items:center }
+  .ak-title h3 { margin:0; font-family:'Barlow Condensed',sans-serif; font-size:24px; letter-spacing:.03em; text-transform:uppercase }
+  .ak-id { background:var(--black); color:var(--orange); font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:20px; padding:8px 12px; border-radius:8px }
+  .ak-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px 16px }
+  .ak-f { display:flex; flex-direction:column; gap:2px; min-width:0 }
+  .ak-f label { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.1em; font-size:11px; color:var(--steel); font-weight:700 }
+  .ak-f b { font-weight:600; overflow-wrap:anywhere } .ak-f b.mono { font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:14px }
+  .ak-f .due { align-self:flex-start }
+  .ak-tabs { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0 10px }
+  .ak-tab { border:1px solid var(--line); background:var(--surface); color:var(--text); border-radius:20px; padding:7px 14px; font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:13px }
+  .ak-tab small { background:var(--line-2); color:var(--steel); border-radius:10px; padding:0 6px; margin-left:4px; font-size:11px }
+  .ak-tab:hover { border-color:var(--orange) }
+  .ak-tab.on { background:var(--black); color:var(--orange); border-color:var(--black) } .ak-tab.on small { background:var(--orange); color:var(--black) }
+  .ak-hist { display:flex; flex-direction:column; gap:6px }
+  .ak-h { display:grid; grid-template-columns:96px 104px 1fr auto; gap:10px; align-items:center; text-align:left; width:100%; border:1px solid var(--line);
+    background:var(--surface); color:var(--text); border-radius:8px; padding:10px 12px }
+  .ak-h:hover { border-color:var(--orange) }
+  .ak-h-day { font-family:'IBM Plex Mono',monospace; font-size:13px }
+  .ak-h-kind { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.06em; font-weight:700; font-size:12px; border-radius:4px; padding:2px 7px; justify-self:start }
+  .ak-h-kind.auftrag { background:var(--orange-lt); color:var(--orange-dk) } .ak-h-kind.protokoll { background:#e7f0fb; color:#1d5fa8 }
+  .ak-h-main { display:flex; flex-direction:column; min-width:0 } .ak-h-main small { color:var(--steel); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .ak-table th { text-align:left } .ak-in { width:100%; border:1px solid var(--line); border-radius:4px; padding:6px 7px; background:var(--surface); color:var(--text) }
+  .ak-in:focus { outline:none; border-color:var(--orange) }
+  .ak-note-new { display:flex; flex-direction:column; gap:8px; align-items:flex-end; margin-bottom:14px } .ak-note-new textarea { width:100% }
+  .ak-note { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px }
+  .ak-note-h { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--steel); margin-bottom:4px }
+  .ak-note-t { white-space:pre-wrap }
+  .ak-gal { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px }
+  .ak-img { margin:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--surface) }
+  .ak-img > button { display:block; width:100%; padding:0; border:0; background:var(--line-2); aspect-ratio:4/3 }
+  .ak-img img { width:100%; height:100%; object-fit:cover; display:block }
+  .ak-img figcaption { display:flex; justify-content:space-between; align-items:center; gap:4px; font-size:11px; color:var(--steel); padding:4px 6px }
+  .ak-files { display:flex; flex-direction:column; gap:6px }
+  .ak-file { display:flex; gap:6px; align-items:center }
+  .ak-file-b { flex:1; min-width:0; display:flex; gap:12px; align-items:center; text-align:left; border:1px solid var(--line); background:var(--surface); color:var(--text); border-radius:8px; padding:8px 10px }
+  .ak-file-b:hover { border-color:var(--orange) }
+  .ak-file-b span:last-child { display:flex; flex-direction:column; min-width:0 } .ak-file-b b { overflow-wrap:anywhere } .ak-file-b small { color:var(--steel) }
+  .ak-ext { background:var(--black); color:var(--orange); font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; border-radius:4px; padding:6px 4px; min-width:44px; text-align:center }
+  .ak-up { background:var(--orange-lt); border-radius:6px; padding:8px 10px; font-size:14px }
+  .ak-lb { max-width:min(1100px, 96vw) !important; width:auto !important } .ak-lb img { max-width:100%; max-height:78vh; display:block; margin:0 auto; border-radius:6px }
+  html[data-theme="dark"] .ak-h-kind.protokoll { background:#1b2a3d; color:#8fbaf0 }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .ak-h-kind.protokoll { background:#1b2a3d; color:#8fbaf0 } }
+  @media (max-width:760px) {
+    .ak-h { grid-template-columns:auto 1fr; } .ak-h-main { grid-column:1 / -1 } .ak-h > span:last-child { grid-column:1 / -1 }
+    .ak-table, .ak-table tbody, .ak-table tr, .ak-table td { display:block; width:100% } .ak-table thead { display:none }
+    .ak-table tr { border:1px solid var(--line); border-radius:8px; margin-bottom:8px; padding:6px 0 }
+    .ak-table td { border:0 !important; padding:3px 10px; display:flex; gap:10px; align-items:center }
+    .ak-table td::before { content:attr(data-l); min-width:110px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.08em; font-size:11px; color:var(--steel); font-weight:700 }
+    .ak-title h3 { font-size:19px }
+  }

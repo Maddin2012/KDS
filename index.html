@@ -120,7 +120,7 @@
           <button class="btn-primary" data-act="add-vehicle" data-show="fleet admin">+ Fahrzeug</button>
           <button class="btn-primary" data-act="new-order" data-show="orders">+ Neuer Auftrag</button>
           <button class="btn-primary" data-act="new-article" data-show="stock admin">+ Artikel</button>
-          <button class="btn-w" data-act="print" data-show="list protocol fleet order orders stock article reorder">Drucken / PDF</button>
+          <button class="btn-w" data-act="print" data-show="list protocol fleet vehicle order orders stock article reorder">Drucken / PDF</button>
           <button class="btn-primary" data-act="close-protocol" data-show="list">Protokoll abschließen</button>
         </div>
       </div>
@@ -229,6 +229,10 @@
 
       <!-- ── Ansicht: Lager – Bestellvorschläge ── -->
       <div id="view-reorder" class="hidden"></div>
+
+      <!-- ── Ansicht: Fahrzeugakte ── -->
+      <div id="view-vehicle" class="hidden"></div>
+      <input id="akte-file" type="file" class="hidden" multiple>
 
       <!-- ── Ansicht: Fuhrpark ── -->
       <div id="view-fleet" class="hidden">

@@ -207,6 +207,25 @@ await t('Neues Gerät tritt normal bei', assertSucceeds(updateDoc(ws5(env.authen
 await t('Admin entsperrt PE', assertSucceeds(updateDoc(ws5(seS), { gesperrt: [], 'members.pe': deleteField() })));
 await t('Entsperrtes Gerät tritt wieder bei', assertSucceeds(updateDoc(ws5(peS), { 'members.pe': true })));
 
+// ---------- Fahrzeugakte ----------
+const ak = (db, ...p) => doc(db, 'workshops', W5, 'akten', 'v1', ...p);
+const brA = env.authenticatedContext('br').firestore(), seA = env.authenticatedContext('se').firestore(), keA = env.authenticatedContext('neu').firestore();
+await t('Admin pflegt Ersatzteile/Ölsorten', assertSucceeds(setDoc(ak(seA), { teile: [{ name: 'Filter' }], oele: [] })));
+await t('Mitarbeiter ändert Ersatzteile NICHT', assertFails(setDoc(ak(brA), { teile: [] }, { merge: true })));
+await t('Mitarbeiter liest Akte', assertSucceeds(getDoc(ak(brA))));
+await t('Mitarbeiter schreibt Notiz', assertSucceeds(setDoc(ak(brA, 'notizen', 'n1'), { text: 'Ölverlust', uid: 'br', von: 'BR', ts: 1 })));
+await t('Notiz im fremden Namen abgelehnt', assertFails(setDoc(ak(brA, 'notizen', 'n2'), { text: 'x', uid: 'se', ts: 1 })));
+await t('Anderer Mitarbeiter löscht fremde Notiz NICHT', assertFails(deleteDoc(ak(keA, 'notizen', 'n1'))));
+await t('Admin löscht Notiz', assertSucceeds(deleteDoc(ak(seA, 'notizen', 'n1'))));
+await t('Mitarbeiter lädt Datei-Stück hoch', assertSucceeds(setDoc(ak(brA, 'dateien', 'f1', 'teile', '0000'), { data: 'AAAA', n: 0 })));
+await t('Mitarbeiter legt Datei an', assertSucceeds(setDoc(ak(brA, 'dateien', 'f1'), { kind: 'bild', name: 'a.jpg', uid: 'br', chunks: 1, ts: 1 })));
+await t('Stück nach Fertigstellung nicht mehr anhängen', assertFails(setDoc(ak(brA, 'dateien', 'f1', 'teile', '0001'), { data: 'BBBB', n: 1 })));
+await t('Falsche Dateiart abgelehnt', assertFails(setDoc(ak(brA, 'dateien', 'f2'), { kind: 'exe', name: 'x', uid: 'br' })));
+await t('Anderer Mitarbeiter löscht fremde Datei NICHT', assertFails(deleteDoc(ak(keA, 'dateien', 'f1'))));
+await t('Mitarbeiter liest Datei-Stücke', assertSucceeds(getDocs(collection(keA, 'workshops', W5, 'akten', 'v1', 'dateien', 'f1', 'teile'))));
+await t('Ersteller löscht eigene Datei samt Stücken', assertSucceeds((async () => { const b = writeBatch(brA); b.delete(ak(brA, 'dateien', 'f1', 'teile', '0000')); b.delete(ak(brA, 'dateien', 'f1')); await b.commit(); })()));
+await t('Fremder liest keine Akte', assertFails(getDoc(ak(env.authenticatedContext('fremdX').firestore()))));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

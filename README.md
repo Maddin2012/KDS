@@ -88,6 +88,17 @@ danach nicht jede Position erledigt, springt der Status automatisch auf **Offen*
 Im abgeschlossenen Serviceprotokoll legt **„🔧 Auftrag aus offenen Mängeln“** einen
 Auftrag mit allen n.i.O.-Punkten (nicht behoben) als Positionen an.
 
+**Fahrzeugakte.** Im Fuhrpark ein Fahrzeug **doppelt antippen**: Kopf mit allen Stammdaten
+und Terminen, darunter die Reiter
+- **Historie** – alle Werkstattaufträge und abgeschlossenen Servicelisten dieses Fahrzeugs
+  (neueste zuerst, antippen öffnet sie; „+ Neuer Auftrag“ legt direkt einen an),
+- **Ersatzteile** und **Ölsorten** – Tabellen, die die Admins pflegen,
+- **Bilder** (am Handy direkt mit der Kamera), **Dokumente** und **Liebherr-Arbeitsberichte**
+  (PDF, Bilder, Word/Excel bis 15 MB) – hochladen dürfen alle, löschen Admins oder wer sie hochgeladen hat,
+- **Notizen** – mit Datum und Kürzel.
+Dateien liegen in Firestore (in Stücken), es braucht kein kostenpflichtiges Firebase Storage.
+„✎ Stammdaten“ (Admins) öffnet das Fahrzeug zum Bearbeiten.
+
 **Fuhrpark aus Excel.** ⚙ Einstellungen → *Daten* → **„Fuhrpark aus Excel ersetzen“**
 (nur Admins): die Fahrzeugliste (.xls/.xlsx, Aufbau wie „Fz.-Ident-Nr.“) wählen – Gruppen
 (Krane, Ladekrane, Zugmaschinen, BF3, Auflieger, PKW, Stapler) und Spalten werden übernommen,
