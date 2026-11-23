@@ -35,6 +35,7 @@ const S = {
   articles: [],             // Lager
   openArticleId: null,
   selVeh: null,             // im Fuhrpark markiertes Fahrzeug
+  ordersFilter: '',         // Werkstattaufträge: '' alle | offen | arbeit | fertig (Auswahl in der Seitenleiste)
   fleetEdit: false,         // Fuhrpark-Blatt im Bearbeitungsmodus (Stift)
   fePending: {},            // noch nicht gespeicherte Eingaben im Blatt: { vid: { feld: wert } }
   expandedArt: null,
@@ -148,7 +149,8 @@ function promptModal(message, okLabel, { value = '', type = 'text', inputmode = 
 /* Gruppen der geöffneten Seite (äußere zuerst) – diese bleiben immer aufgeklappt */
 const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view === 'reorder') ? ['lager']
   : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'service']
-  : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? ['werkstatt'] : [];
+  : (S.view === 'orders' || S.view === 'order') ? ['werkstatt', 'orders']
+  : S.view === 'fleet' ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
 /* Startseite: alle Gruppen zu, nur die Hauptkategorien (Werkstatt, Lager) sichtbar */
@@ -189,7 +191,8 @@ function renderNav() {
   });
   $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
   $('nav-fleet').classList.toggle('active', S.view === 'fleet');
-  $('nav-orders').classList.toggle('active', S.view === 'orders' || S.view === 'order');
+  document.querySelectorAll('#nav-orders .nav-item').forEach(n => n.classList.toggle('active',
+    (S.view === 'orders' || S.view === 'order') && (n.dataset.ostatus || '') === S.ordersFilter));
   $('orders-count').textContent = S.orders.filter(o => o.status !== 'fertig').length;
   $('nav-stock').classList.toggle('active', S.view === 'stock' || S.view === 'article');
   $('nav-reorder').classList.toggle('active', S.view === 'reorder');
@@ -221,7 +224,7 @@ function renderChrome() {
   if (mode === 'home') title = 'Startseite';
   else if (mode === 'archive') title = 'Archiv';
   else if (mode === 'fleet') title = 'Fuhrpark';
-  else if (mode === 'orders') title = 'Werkstattaufträge';
+  else if (mode === 'orders') title = 'Werkstattaufträge' + (S.ordersFilter ? ' · ' + ORDER_STATUS[S.ordersFilter] : '');
   else if (mode === 'order') title = 'Auftrag ' + ((S.orderEdit && S.orderEdit.nr) || '');
   else if (mode === 'stock') title = 'Lager';
   else if (mode === 'article') title = (S.artEdit && S.artEdit.name) || 'Artikel';
@@ -711,7 +714,7 @@ function renderOrders() {
       : 'Die Aufträge konnten nicht geladen werden. Bitte später erneut versuchen.'}</div>`;
     return;
   }
-  const q = $('orders-search').value.trim().toLowerCase(), st = $('orders-status').value;
+  const q = $('orders-search').value.trim().toLowerCase(), st = S.ordersFilter;
   const list = S.orders
     .filter(o => !st || (st === 'open' ? o.status !== 'fertig' : o.status === st))
     .filter(o => !q || [o.nr, o.fahrzeug, o.code, o.kz, o.werk, o.notes, ...(o.crew || []).map(monteurLabel),
@@ -2606,7 +2609,7 @@ document.addEventListener('click', (e) => {
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'fleet') { flushTemplateSave(); flushOrderSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
-    else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.view = 'orders'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.ordersFilter = nav.dataset.ostatus || ''; S.view = 'orders'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'stock' || nav.dataset.view === 'reorder') {
       flushTemplateSave(); flushOrderSave(); flushArtSave(); S.expandedArt = null; closeArticleSubs();
       S.view = nav.dataset.view; render(); window.scrollTo(0, 0);
@@ -2652,7 +2655,6 @@ $('fleet-list').addEventListener('change', (e) => { if (e.target.classList.conta
 $('fleet-list').addEventListener('focusout', (e) => { if (e.target.classList.contains('fe-in') && S.fePending[e.target.dataset.vid]) saveFleetRow(e.target.dataset.vid); });
 ['fleet-grp', 'fleet-kind', 'fleet-state'].forEach(id => $(id).addEventListener('change', renderFleet));
 $('orders-search').addEventListener('input', renderOrders);
-$('orders-status').addEventListener('change', renderOrders);
 ['stock-search', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
 $('stock-ort').addEventListener('change', async (e) => {
   if (e.target.value !== '__neu__') { renderStock(); return; }
@@ -2773,8 +2775,8 @@ let applyingNav = false;      // Navigation kommt gerade aus dem Verlauf → nic
 let layerEntries = 0;         // Verlaufseinträge für offene Fenster/Ebenen
 let ignorePops = 0;           // selbst ausgelöste „Zurück“-Schritte (Fenster per Knopf geschlossen)
 
-const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit });
-const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit].join('|');
+const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit, of: S.ordersFilter });
+const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit, n.view === 'orders' ? n.of || '' : ''].join('|');
 
 /* Nach jedem Zeichnen: hat sich die Seite geändert, einen neuen Schritt eintragen */
 function syncHistory() {
@@ -2797,6 +2799,7 @@ function applyNav(nav) {
     if (S.edit && !nav.edit) { S.edit = false; S.editTpl = null; }
     if (nav.cat && nav.cat !== S.cat) { S.cat = nav.cat; lsSet('kds_cat', nav.cat); draft = loadDraft(nav.cat); }
     S.view = nav.view || 'list';
+    if (nav.of !== undefined) S.ordersFilter = nav.of || '';
     S.openId = nav.openId;
     if (nav.edit && amAdmin() && S.view === 'list') { S.edit = true; S.editTpl = structuredClone(tplFor(S.cat)); }
     flushArtSave();

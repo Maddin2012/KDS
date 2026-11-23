@@ -58,7 +58,17 @@
               <div class="nav-item" id="nav-archive" data-view="archive">Archiv <span class="count" id="arch-count">0</span></div>
             </div>
           </div>
-          <div class="nav-item" id="nav-orders" data-view="orders">Werkstattaufträge <span class="count" id="orders-count">0</span></div>
+          <div class="nav-group nav-sub" data-group="orders">
+            <button class="nav-group-h nav-sub-h" type="button" data-group-toggle="orders" aria-expanded="true">
+              <span>Werkstattaufträge</span><span class="chev" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav-group-b" id="nav-orders">
+              <div class="nav-item" data-view="orders" data-ostatus="">Alle <span class="count" id="orders-count">0</span></div>
+              <div class="nav-item" data-view="orders" data-ostatus="offen">Offen</div>
+              <div class="nav-item" data-view="orders" data-ostatus="arbeit">In Arbeit</div>
+              <div class="nav-item" data-view="orders" data-ostatus="fertig">Abgeschlossen</div>
+            </div>
+          </div>
           <div class="nav-item" id="nav-fleet" data-view="fleet">Fuhrpark <span class="count" id="fleet-count">0</span></div>
         </div>
       </nav>
@@ -196,13 +206,6 @@
       <div id="view-orders" class="hidden">
         <div class="arch-tools no-print">
           <input id="orders-search" type="search" placeholder="Suchen: Auftrags-Nr., Fahrzeug, Kennzeichen, Arbeit …" autocomplete="off">
-          <select id="orders-status">
-            <option value="open">Nicht abgeschlossen</option>
-            <option value="">Alle</option>
-            <option value="offen">Offen</option>
-            <option value="arbeit">In Arbeit</option>
-            <option value="fertig">Abgeschlossen</option>
-          </select>
         </div>
         <div class="arch-list" id="orders-list"></div>
       </div>
