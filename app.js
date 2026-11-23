@@ -151,6 +151,11 @@ const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view
   : (S.view === 'orders' || S.view === 'order' || S.view === 'fleet') ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
 function navClosed() { return lsJson('kds_nav_closed', {}) || {}; }
+/* Startseite: alle Gruppen zu, nur die Hauptkategorien (Werkstatt, Lager) sichtbar */
+function collapseAllNav() {
+  const c = {}; document.querySelectorAll('.nav-group[data-group]').forEach(g => { c[g.dataset.group] = true; });
+  lsSet('kds_nav_closed', JSON.stringify(c));
+}
 let lastNavPage = '';
 function renderNavGroups() {
   const active = activeGroups();
@@ -2628,7 +2633,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('ms-monteure').classList.remove('open'); });
 
 /* Startseite: Klick auf „Krandienst Schulz“ oben in der Seitenleiste */
-const goHome = () => { flushTemplateSave(); flushOrderSave(); flushArtSave(); if (S.edit) { S.edit = false; S.editTpl = null; } S.view = 'home'; render(); window.scrollTo(0, 0); };
+const goHome = () => { flushTemplateSave(); flushOrderSave(); flushArtSave(); if (S.edit) { S.edit = false; S.editTpl = null; } S.view = 'home'; collapseAllNav(); render(); window.scrollTo(0, 0); };
 $('brand-home').addEventListener('click', goHome);
 $('brand-home').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); } });
 $('btn-side').addEventListener('click', () => {
@@ -2872,6 +2877,7 @@ async function start() {
     if (!st.kdsNav || st.kdsLayer) history.replaceState({ kdsNav: navSnapshot(), idx: st.kdsNav ? (st.idx || 0) : 0 }, ''); }
   applyTheme();
   renderBuild();
+  if (S.view === 'home') collapseAllNav();   // beim Öffnen: Seitenleiste nur mit den Hauptkategorien
   // Seitenleiste: gemerkter Zustand; auf dem Handy standardmäßig eingeklappt
   const sideState = lsGet('kds_sidebar_collapsed', null);
   if (sideState === 'true' || (sideState === null && window.innerWidth <= 940)) document.querySelector('.app').classList.add('sidebar-collapsed');
