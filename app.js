@@ -3335,7 +3335,7 @@ function updatePasteButton() {
 const actions = {
   'open-menu': () => { document.querySelector('.app').classList.remove('sidebar-collapsed'); },
   'print': () => {
-    markEmptyDate();
+    markEmptyDate(); syncPrintDates();
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     try { window.print(); } catch (e) { showToast('Drucken wird von diesem Browser nicht unterstützt'); }
   },
@@ -3677,7 +3677,16 @@ document.addEventListener('focusout', (e) => {
   }, 0);
 });
 
-window.addEventListener('beforeprint', markEmptyDate);
+/* Druck: Datumsfelder als reinen Text ausgeben. Handys (v. a. Android) zeichnen bei
+   <input type="date"> sonst ein Auswahl-Häkchen bzw. -Pfeil mit in den Ausdruck. */
+function syncPrintDates() {
+  document.querySelectorAll('input[type="date"]').forEach(inp => {
+    let sp = inp.nextElementSibling;
+    if (!sp || !sp.classList.contains('print-date')) { sp = document.createElement('span'); sp.className = 'print-date'; inp.after(sp); }
+    sp.textContent = fmtDay(inp.value) || '';
+  });
+}
+window.addEventListener('beforeprint', () => { markEmptyDate(); syncPrintDates(); });
 
 /* Versionsstand (wird beim Veröffentlichen in config.js geschrieben) */
 function renderBuild() {
