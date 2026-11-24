@@ -1133,3 +1133,5 @@
   html[data-theme="dark"] .dk-grid .dk-filled { background:#16352a }
   @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .dk-grid .dk-filled { background:#16352a } }
   @media (max-width:520px) { .dk-grid { grid-template-columns:1fr } }
+  .lo-row { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:8px 10px }
+  .lo-row small { display:block; color:var(--steel); font-size:12px } .lo-row .btn-sec { padding:7px 10px }

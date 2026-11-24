@@ -151,6 +151,11 @@ Ausdruck. Direkt bei einer Position geht das über **„+ Lager“** unter *Mate
 die Entnahme wird dann auch dort eingetragen. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
 Aufträgen geht das nur noch für SE und KÖ.
 
+**Lagerorte verwalten (Admins).** Im Feld „Alle Lagerorte“ → **„⚙ Lagerorte verwalten …“**:
+umbenennen, löschen (liegen dort noch Artikel, werden sie in einen gewählten Lagerort umgelagert)
+oder neu anlegen. Beim Diktieren wird nur aus den angelegten Lagerorten gewählt – auch ungenau
+gehörte Namen („Kleingebindeelager“) werden dem richtigen zugeordnet.
+
 **Diktieren.** „+ Artikel“ öffnet ein Fenster mit **🎤 Sprechen**: einen Satz sagen wie
 „Bremsenreiniger 500 ml, Artikelnummer BR 500, Kategorie Spraydosen, Lagerort Werkstatt, Einheit Dose,
 Mindestbestand 6, Preis 3,50, Lieferant Würth“ – die Felder werden automatisch ausgefüllt (grün) und

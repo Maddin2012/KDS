@@ -306,6 +306,27 @@ export function speechNumber(s) {
   const m = t.match(/-?\d+(?:[.,]\d+)?/); if (m) return parseFloat(m[0].replace(',', '.'));
   const w = t.split(/\s+/)[0]; return NUM_WORDS[w] !== undefined ? NUM_WORDS[w] : null;
 }
+/* Gesprochenes mit einer Liste abgleichen – tolerant gegenüber Leerzeichen, Bindestrichen,
+   doppelten Buchstaben und kleinen Hörfehlern („Kleingebindeelager“ → „Kleingebinde Lager“) */
+const fuzzKey = (s) => String(s || '').toLowerCase().replace(/ß/g, 'ss').replace(/[^a-z0-9äöü]/g, '').replace(/(.)\1+/g, '$1');
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+export function fuzzyPick(spoken, list) {
+  const k = fuzzKey(spoken); if (!k) return null;
+  let best = null, bestScore = 0;
+  for (const item of list) {
+    const ik = fuzzKey(item); if (!ik) continue;
+    let score = ik === k ? 1 : (ik.startsWith(k) || k.startsWith(ik)) ? 0.9 * Math.min(ik.length, k.length) / Math.max(ik.length, k.length) + 0.1 : 1 - lev(ik, k) / Math.max(ik.length, k.length);
+    if (score > bestScore) { bestScore = score; best = item; }
+  }
+  if (k.length < 6 && bestScore < 1) return null;      // kurze Wörter („Lager“) nur bei genauem Treffer
+  return bestScore >= 0.72 ? best : null;
+}
 export function parseArticleSpeech(text, { orte = [], kats = [] } = {}) {
   const src = String(text || '').replace(/\s+/g, ' ').trim();
   const hits = [];
@@ -327,8 +348,9 @@ export function parseArticleSpeech(text, { orte = [], kats = [] } = {}) {
   if (out.minBestand !== undefined) { const n = speechNumber(out.minBestand); out.minBestand = n === null ? '' : n; }
   if (out.preis !== undefined) { const n = speechNumber(out.preis); out.preis = n === null ? '' : n; }
   if (out.einheit) { const w = out.einheit.split(' ')[0]; const u = UNIT_WORDS.find(([re]) => re.test(w)); out.einheit = u ? u[1] : out.einheit; }
-  if (out.lagerort) out.lagerort = pick(out.lagerort, orte);
-  if (out.kat) out.kat = pick(out.kat, kats);
+  // Lagerort nur aus den angelegten; nicht erkannt → leer lassen (out.lagerortRaw zeigt das Gehörte)
+  if (out.lagerort) { const m = fuzzyPick(out.lagerort, orte); if (m) out.lagerort = m; else { out.lagerortRaw = out.lagerort; delete out.lagerort; } }
+  if (out.kat) out.kat = fuzzyPick(out.kat, kats) || pick(out.kat, kats);
   if (out.name) out.name = out.name.charAt(0).toUpperCase() + out.name.slice(1);
   if (out.lieferant) out.lieferant = out.lieferant.charAt(0).toUpperCase() + out.lieferant.slice(1);
   return out;

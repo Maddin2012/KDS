@@ -349,7 +349,8 @@ const DEFAULT_ORTE = ['Hauptlager', 'Werkstatt', 'Ersatzteillager'];
 const ART_FIELDS = ['sku', 'barcode', 'name', 'kat', 'einheit', 'gebinde', 'lagerort', 'minBestand', 'preis', 'notes', 'suppliers'];
 const deSort = (x, y) => String(x).localeCompare(String(y), 'de', { sensitivity: 'base', numeric: true });
 const kategorien = () => [...new Set([...DEFAULT_KATS, ...(S.lagerCfg.kategorien || []), ...S.articles.map(x => x.kat).filter(Boolean)])].sort(deSort);
-const lagerorte = () => [...new Set([...DEFAULT_ORTE, ...(S.lagerCfg.lagerorte || []), ...S.articles.map(x => x.lagerort).filter(Boolean)])].sort(deSort);
+const lagerorte = () => { const aus = S.lagerCfg.lagerorteAus || [];
+  return [...new Set([...DEFAULT_ORTE.filter(o => !aus.includes(o)), ...(S.lagerCfg.lagerorte || []), ...S.articles.map(x => x.lagerort).filter(Boolean)])].sort(deSort); };
 const fmtNum = (n) => (Math.round(num(n) * 1000) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 3 });
 const fmtEuro = (n) => num(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 /* Ampel: leer (≤ 0) · niedrig (≤ Mindestbestand) · ok */
@@ -372,7 +373,7 @@ function renderStock() {
     sel.innerHTML = `<option value="">${all}</option>` + list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('') + extra;
     sel.value = list.includes(cur) ? cur : ''; };
   // alle bekannten Lagerorte (auch neu angelegte ohne Artikel); Admins können hier einen neuen anlegen
-  fill('stock-ort', lagerorte(), 'Alle Lagerorte', amAdmin() ? '<option value="__neu__">+ Neuer Lagerort …</option>' : '');
+  fill('stock-ort', lagerorte(), 'Alle Lagerorte', amAdmin() ? '<option value="__neu__">+ Neuer Lagerort …</option><option value="__edit__">⚙ Lagerorte verwalten …</option>' : '');
   fill('stock-kat', [...new Set(S.articles.map(x => x.kat).filter(Boolean))].sort(deSort), 'Alle Kategorien');
   if (S.lagerError) {
     $('stock-summary').innerHTML = '';
@@ -675,6 +676,85 @@ function assignCodeDialog(code) {
   };
 }
 
+/* ---------- Lagerorte verwalten (Admins): umbenennen, löschen (Artikel werden umgelagert) ---------- */
+async function saveOrteCfg(add, remove) {
+  const list = (S.lagerCfg.lagerorte || []).filter(o => o !== remove);
+  if (add && !list.includes(add)) list.push(add);
+  const aus = new Set(S.lagerCfg.lagerorteAus || []);
+  if (remove && DEFAULT_ORTE.includes(remove)) aus.add(remove);
+  if (add) aus.delete(add);
+  const cfg = { lagerorte: list, lagerorteAus: [...aus] };
+  S.lagerCfg = { ...S.lagerCfg, ...cfg };
+  await S.store.saveLagerCfg(cfg);
+}
+async function moveArticlesOrt(from, to) {
+  const arts = S.articles.filter(a => a.lagerort === from);
+  for (const a of arts) { a.lagerort = to; await S.store.saveArticle(a.id, { lagerort: to }, S.me, false); }
+  return arts.length;
+}
+function manageLagerorte() {
+  const ov = $('setup');
+  let ctx = null;   // { mode: 'del'|'ren', ort }
+  const draw = () => {
+    const orte = lagerorte(), cnt = (o) => S.articles.filter(a => a.lagerort === o).length;
+    if (!ctx) {
+      ov.innerHTML = `<div class="setup-card">${cardHead}<h3>Lagerorte verwalten</h3>
+        <p>Umbenennen oder löschen. Liegen dort noch Artikel, werden sie in einen anderen Lagerort umgelagert.</p>
+        <div class="set-list">${orte.map(o => `<div class="lo-row"><span><b>${esc(o)}</b><small>${cnt(o)} Artikel</small></span>
+          <button class="btn-sec" type="button" data-lo="ren" data-o="${esc(o)}">Umbenennen</button>
+          <button class="btn-sec btn-danger" type="button" data-lo="del" data-o="${esc(o)}" ${orte.length < 2 ? 'disabled' : ''}>Löschen</button></div>`).join('')}</div>
+        <button class="btn-big" type="button" data-lo="add" style="margin-top:12px">+ Neuer Lagerort</button>
+        <div class="setup-err" id="lo-err"></div>
+        <div class="setup-back"><button class="link-btn" data-n="close" type="button">Fertig</button></div></div>`;
+      return;
+    }
+    const o = ctx.ort, n = cnt(o), others = orte.filter(x => x !== o);
+    ov.innerHTML = `<div class="setup-card">${cardHead}<h3>${ctx.mode === 'del' ? `„${esc(o)}“ löschen` : `„${esc(o)}“ umbenennen`}</h3>
+      ${ctx.mode === 'ren' ? `<div class="field"><label for="lo-name">Neuer Name</label><input id="lo-name" value="${esc(o)}" autocomplete="off"></div>`
+        : n ? `<p>Hier ${n === 1 ? 'liegt' : 'liegen'} noch <b>${n} Artikel</b>. Wohin ${n === 1 ? 'soll er' : 'sollen sie'} umgelagert werden?</p>
+          <div class="field"><label for="lo-to">Neuer Lagerort</label><select id="lo-to">${others.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></div>`
+        : '<p>Hier liegen keine Artikel. Der Lagerort verschwindet aus allen Auswahllisten.</p>'}
+      <div class="setup-err" id="lo-err"></div>
+      <button class="btn-big ${ctx.mode === 'del' ? 'btn-danger-big' : ''}" type="button" data-lo="ok">${ctx.mode === 'del' ? 'Löschen' : 'Umbenennen'}</button>
+      <div class="setup-back"><button class="link-btn" data-lo="back" type="button">← Zurück</button></div></div>`;
+    const i = $('lo-name'); if (i) { i.focus(); i.select(); }
+  };
+  ov.classList.remove('hidden'); draw();
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; renderStock(); };
+  ov.onclick = async (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    const b = e.target.closest('[data-lo]'); if (!b) return;
+    const act = b.dataset.lo;
+    if (act === 'back') { ctx = null; draw(); return; }
+    if (act === 'del' || act === 'ren') { ctx = { mode: act, ort: b.dataset.o }; draw(); return; }
+    if (act === 'add') {
+      const v = ((await promptModal('Name des neuen Lagerorts:', 'Hinzufügen')) || '').trim(); if (!v) return;
+      if (lagerorte().some(o => o.toLowerCase() === v.toLowerCase())) { showToast(`Lagerort „${v}“ gibt es schon`); return; }
+      try { await saveOrteCfg(v, null); showToast(`Lagerort „${v}“ angelegt`); } catch (err) { showToast('Speichern fehlgeschlagen'); }
+      draw(); return;
+    }
+    if (act === 'ok') {
+      const o = ctx.ort; b.disabled = true;
+      try {
+        if (ctx.mode === 'ren') {
+          const v = $('lo-name').value.trim();
+          if (!v || v === o) { ctx = null; draw(); return; }
+          if (lagerorte().some(x => x !== o && x.toLowerCase() === v.toLowerCase())) { $('lo-err').textContent = 'Diesen Lagerort gibt es schon – dann lieber „Löschen“ und umlagern.'; b.disabled = false; return; }
+          await saveOrteCfg(v, o); const n = await moveArticlesOrt(o, v);
+          showToast(`„${o}“ heißt jetzt „${v}“${n ? ` (${n} Artikel)` : ''}`);
+        } else {
+          const to = $('lo-to') ? $('lo-to').value : null;
+          const n = to ? await moveArticlesOrt(o, to) : 0;
+          await saveOrteCfg(null, o);
+          showToast(`Lagerort „${o}“ gelöscht${n ? ` – ${n} Artikel nach „${to}“ umgelagert` : ''}`);
+        }
+        if ($('stock-ort').value === o) $('stock-ort').value = '';
+        ctx = null; draw();
+      } catch (err) { b.disabled = false; $('lo-err').textContent = err && err.code === 'permission-denied' ? 'Keine Berechtigung – bitte als Admin anmelden.' : 'Das hat nicht geklappt.'; }
+    }
+  };
+}
+
 /* ---------- Ein Artikel ---------- */
 let unsubBookings = null;
 function closeArticleSubs() { if (unsubBookings) { unsubBookings(); unsubBookings = null; } S.openArticleId = S.view === 'article' ? S.openArticleId : null; }
@@ -730,19 +810,21 @@ async function newArticle(barcode = '') {
     <div class="dk-status" id="dk-status"></div>
     <div class="dk-grid">${F.map(([k, l]) => `<div class="field${k === 'name' ? ' dk-wide' : ''}"><label for="dk-${k}">${l}</label>${k === 'einheit'
       ? `<select id="dk-${k}" data-k="${k}">${EINHEITEN.map(u => `<option>${u}</option>`).join('')}</select>`
-      : `<input id="dk-${k}" data-k="${k}" autocomplete="off" ${k === 'kat' ? 'list="dk-kats"' : k === 'lagerort' ? 'list="dk-orte"' : ''} ${['minBestand', 'preis', 'barcode'].includes(k) ? 'inputmode="decimal"' : ''}>`}</div>`).join('')}</div>
+      : k === 'lagerort' ? `<select id="dk-${k}" data-k="${k}">${lagerorte().map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`
+      : `<input id="dk-${k}" data-k="${k}" autocomplete="off" ${k === 'kat' ? 'list="dk-kats"' : ''} ${['minBestand', 'preis', 'barcode'].includes(k) ? 'inputmode="decimal"' : ''}>`}</div>`).join('')}</div>
     <datalist id="dk-kats">${kategorien().map(k => `<option value="${esc(k)}">`).join('')}</datalist>
-    <datalist id="dk-orte">${lagerorte().map(k => `<option value="${esc(k)}">`).join('')}</datalist>
     <div class="setup-err" id="dk-err"></div>
     <button class="btn-big" type="button" data-d="save">Artikel anlegen</button>
     <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
   ov.classList.remove('hidden');
-  $('dk-barcode').value = barcode || ''; $('dk-einheit').value = 'Stk.'; $('dk-kat').value = 'Verbrauchsmaterial'; $('dk-lagerort').value = DEFAULT_ORTE[0];
+  $('dk-barcode').value = barcode || ''; $('dk-einheit').value = 'Stk.'; $('dk-kat').value = 'Verbrauchsmaterial';
+  $('dk-lagerort').value = lagerorte().includes(DEFAULT_ORTE[0]) ? DEFAULT_ORTE[0] : (lagerorte()[0] || '');
   if (barcode) touched.add('barcode');
   const apply = () => {
     const p = parseArticleSpeech($('dk-text').value, { orte: lagerorte(), kats: kategorien() });
+    $('dk-status').textContent = p.lagerortRaw && !touched.has('lagerort') ? `Lagerort „${p.lagerortRaw}“ gibt es nicht – bitte unten auswählen.` : '';
     F.forEach(([k]) => { if (touched.has(k) || p[k] === undefined || p[k] === '') return;
-      const el = $('dk-' + k); if (k === 'einheit' && !EINHEITEN.includes(p[k])) return; el.value = typeof p[k] === 'number' ? String(p[k]).replace('.', ',') : p[k]; el.classList.add('dk-filled'); });
+      const el = $('dk-' + k); if (k === 'einheit' && !EINHEITEN.includes(p[k])) return; if (k === 'lagerort' && !lagerorte().includes(p[k])) return; el.value = typeof p[k] === 'number' ? String(p[k]).replace('.', ',') : p[k]; el.classList.add('dk-filled'); });
   };
   let stop = null;
   const setMic = (on) => { const b = $('dk-mic'); if (!b) return; b.classList.toggle('on', on); $('dk-mic-l').textContent = on ? 'Zuhören … (antippen zum Beenden)' : 'Sprechen'; };
@@ -773,7 +855,6 @@ async function newArticle(barcode = '') {
       // neue Kategorie / neuer Lagerort gleich in die Auswahl übernehmen
       const cfg = {};
       if (!kategorien().includes(d.kat)) cfg.kategorien = [...new Set([...(S.lagerCfg.kategorien || []), d.kat])];
-      if (!lagerorte().includes(d.lagerort)) cfg.lagerorte = [...new Set([...(S.lagerCfg.lagerorte || []), d.lagerort])];
       if (Object.keys(cfg).length) { S.lagerCfg = { ...S.lagerCfg, ...cfg }; S.store.saveLagerCfg(cfg).catch(() => {}); }
       close();
       try {
@@ -3431,6 +3512,7 @@ $('orders-search').addEventListener('input', renderOrders);
 $('stock-scan').addEventListener('click', scanInStock);
 ['stock-search', 'stock-kat'].forEach(id => $(id).addEventListener(id === 'stock-search' ? 'input' : 'change', renderStock));
 $('stock-ort').addEventListener('change', async (e) => {
+  if (e.target.value === '__edit__') { e.target.value = ''; renderStock(); if (amAdmin()) manageLagerorte(); return; }
   if (e.target.value !== '__neu__') { renderStock(); return; }
   e.target.value = '';
   if (!amAdmin()) return;
