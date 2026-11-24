@@ -1258,6 +1258,7 @@ function renderOrder() {
     </div>
     <p class="proto-meta">${esc([created ? 'angelegt ' + created + (o.erstelltVon ? ' von ' + o.erstelltVon : '') : '',
       src ? 'aus Serviceprotokoll ' + src.category + ' vom ' + fmtDate(src) : ''].filter(Boolean).join(' · '))}</p>
+    <div id="o-svc-print" class="o-svc-print"></div>
     <div class="o-done no-print">
       <button class="btn-big o-done-btn" data-act="order-done" type="button">${locked ? 'Schließen' : S.orderIsNew === o.id ? '✓ Auftrag anlegen' : '✓ Auftrag speichern'}</button>
     </div>`;
@@ -1484,8 +1485,28 @@ function renderOrderService() {
       </button>${locked ? '' : `<button class="btn-del-row no-print" data-act="order-svc-del" data-idx="${i}" title="Aus dem Auftrag entfernen">✕</button>`}</div>`; }).join('');
   const runs = running.map(c => `<div class="o-svc-item"><button type="button" class="o-svc-row" data-act="order-open-draft" data-cat="${esc(c)}">
       <span class="badge pend">in Arbeit</span><b>Serviceliste ${esc(c)}</b><small>auf diesem Gerät, noch nicht zum Auftrag hinzugefügt – weiter ausfüllen</small></button></div>`).join('');
+  renderOrderSvcPrint();
   box.innerHTML = (rows || runs) ? `<div class="o-svc-list">${runs}${rows}</div>`
     : `<p class="proto-meta">Noch keine Serviceliste zu diesem Auftrag.${cat ? '' : ' Für die Fahrzeuggruppe gibt es keine feste Liste – die Kategorie wird beim Hinzufügen gewählt.'}</p>`;
+}
+/* Druck: Servicelisten des Auftrags jeweils auf einer neuen Seite hinter dem Auftrag */
+function renderOrderSvcPrint() {
+  const o = S.orderEdit, box = $('o-svc-print'); if (!box || !o) return;
+  const mark = (v) => `<span class="sp-box">${v ? '✓' : ''}</span>`;
+  box.innerHTML = o.svc.map(x => {
+    const p = buildProtocolFrom(x.cat, x.draft, x.von), h = p.header || {};
+    const f = (l, v) => `<div class="sp-f"><label>${l}</label><b>${esc(v || '')}</b></div>`;
+    return `<section class="sp-page">
+      <div class="sp-head"><h2>Serviceliste ${esc(x.cat)}</h2><span>zu Auftrag ${esc(o.nr)}</span></div>
+      <div class="sp-fields">${f('ID / Fahrzeug', h.fId)}${f('Kennzeichen', [h.kz, h.werk ? 'Werk-Nr. ' + h.werk : ''].filter(Boolean).join(' · '))}
+        ${f('Km-Stand', h.fKm)}${f('Std. OW', h.fOw)}${f('Std. UW', h.fUw)}${f('Datum', fmtDay(h.fDate))}</div>
+      ${(p.groups || []).map(g => `<div class="sp-group"><h3>${esc(g.title)}</h3>${g.items.length ? `<table class="sp-table">
+        <thead><tr><th>Prüfpunkt / Arbeitsschritt</th><th>Bemerkung / Zusatz</th><th>i.O.</th><th>n.i.O.</th><th>behoben</th></tr></thead>
+        <tbody>${g.items.map(i => `<tr><td>${esc(i.text)}</td><td>${esc(i.note)}</td><td class="c">${mark(i.io)}</td><td class="c">${mark(i.nio)}</td><td class="c">${mark(i.beh)}</td></tr>`).join('')}</tbody>
+      </table>` : ''}</div>`).join('')}
+      <div class="sp-crew"><label>Prüfer / Monteure</label> ${esc((p.monteure || []).map(monteurLabel).join(', ') || '—')}</div>
+    </section>`;
+  }).join('');
 }
 /* Serviceliste aus dem Auftrag öffnen (zum Weiterbearbeiten bzw. Ansehen) */
 async function openOrderSvc(idx) {

@@ -1161,3 +1161,26 @@
     .print-date { display:block; font-family:'IBM Plex Mono',monospace; font-size:inherit; min-height:1.2em; color:#000 }
     .card .print-date { font-size:13px; font-weight:500 }
   }
+  /* Auftrag drucken: angehängte Servicelisten (nur im Ausdruck) */
+  .o-svc-print { display:none }
+  @media print {
+    .o-svc-print { display:block }
+    .sp-page { break-before:page; page-break-before:always; color:#000; font-family:'Barlow',Arial,sans-serif }
+    .sp-head { display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid var(--orange); padding-bottom:4px; margin-bottom:8px }
+    .sp-head h2 { margin:0; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.04em; font-size:20px }
+    .sp-head span { font-size:11px; color:#444 }
+    .sp-fields { display:grid; grid-template-columns:2fr 2fr 1fr 1fr 1fr 1fr; gap:4px; margin-bottom:8px }
+    .sp-f { border:1px solid #ccc; border-radius:4px; padding:3px 5px; min-height:32px }
+    .sp-f label { display:block; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.06em; font-size:8px; color:#8a6a3d; font-weight:700 }
+    .sp-f b { font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:11px }
+    .sp-group { break-inside:avoid; margin-bottom:6px }
+    .sp-group h3 { margin:6px 0 2px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.05em; font-size:12px; border-bottom:1px solid #000 }
+    .sp-table { width:100%; border-collapse:collapse; font-size:9.5px }
+    .sp-table th { text-align:left; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; font-size:8px; color:#555; border-bottom:1px solid #999; padding:1px 3px }
+    .sp-table th:nth-child(n+3) { width:42px; text-align:center }
+    .sp-table td { border-bottom:1px solid #e3e3e3; padding:1.5px 3px; vertical-align:top }
+    .sp-table td:nth-child(2) { width:32% }
+    .sp-table td.c { text-align:center }
+    .sp-box { display:inline-block; width:11px; height:11px; border:1px solid #333; line-height:10px; font-size:10px; font-weight:700 }
+    .sp-crew { margin-top:8px; font-size:11px } .sp-crew label { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; font-size:9px; color:#8a6a3d; font-weight:700; margin-right:6px }
+  }
