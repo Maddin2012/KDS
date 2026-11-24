@@ -238,6 +238,7 @@ function renderChrome() {
     title = 'Protokoll ' + (p ? p.category : '');
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
+  $('hero-badge').innerHTML = mode === 'order' && S.orderEdit ? statusBadge(S.orderEdit.status) : '';
   $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
@@ -1165,7 +1166,7 @@ function openOrder(id) {
 
 function orderRowHtml(r, i) {
   return `<tr data-rid="${esc(r.id)}" class="${r.done ? 'is-done' : ''}">
-    <td class="pos">${String(i + 1).padStart(2, '0')}</td>
+    <td class="pos"><span class="o-drag no-print" title="Ziehen zum Verschieben" aria-label="Position verschieben">⠿</span><span class="o-pos-n">${String(i + 1).padStart(2, '0')}</span></td>
     <td><textarea class="o-ta" data-f="text" rows="1" placeholder="z. B. Hydrauliköl gewechselt, Filter erneuert">${esc(r.text)}</textarea></td>
     <td><div class="o-mat"><textarea class="o-ta" data-f="mat" rows="1" placeholder="Teile-Nr. / Menge">${esc(r.mat)}</textarea>
       <button class="o-mat-lager no-print" data-act="order-stock-row" type="button" title="Material aus dem Lager entnehmen und hier eintragen">+ Lager</button></div></td>
@@ -1201,7 +1202,7 @@ function renderOrder() {
     </div>
 
     <div class="box">
-      <div class="sec-title"><div class="title-left"><span>Auftrag <span class="mono" style="font-size:16px">${esc(o.nr)}</span></span></div><span id="o-badge">${statusBadge(o.status)}</span></div>
+      <div class="sec-title"><div class="title-left"><span>Fahrzeug &amp; Daten</span></div></div>
       ${locked ? '<p class="o-locked no-print">🔒 Abgeschlossen – ändern können nur die Admins (SE, KÖ).</p>' : ''}
       <div class="o-grid">
         <div class="o-field o-veh">
@@ -1271,6 +1272,7 @@ function renderOrder() {
 function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
+  v.querySelectorAll('.o-drag').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"], [data-act="order-svc-del"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
@@ -1282,7 +1284,7 @@ function reopenIfIncomplete() {
   if (!open) return;
   o.status = 'offen';
   if ($('o-status')) $('o-status').value = 'offen';
-  if ($('o-badge')) $('o-badge').innerHTML = statusBadge('offen');
+  if ($('hero-badge')) $('hero-badge').innerHTML = statusBadge('offen');
   showToast('Nicht alle Positionen erledigt – Auftrag wieder auf „Offen“ gesetzt');
 }
 /* Textfelder an ihren Inhalt anpassen – nur wenn sichtbar (sonst ergibt die Messung 0) */
@@ -1298,6 +1300,41 @@ function renderOrderCrew() {
     <code>${esc(m.code)}</code>${esc(m.name)}</button>`).join('');
   $('o-crew-print').textContent = o.crew.map(monteurLabel).join(', ') || '—';
 }
+/* ---------- Positionen per Griff ⠿ verschieben (Maus und Finger) ---------- */
+let orderDrag = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest && e.target.closest('#o-rows .o-drag'); if (!h || orderLocked(S.orderEdit)) return;
+  const tr = h.closest('tr[data-rid]'); if (!tr) return;
+  e.preventDefault();
+  orderDrag = { tr, id: e.pointerId };
+  tr.classList.add('o-dragging'); document.body.classList.add('o-drag-active');
+  try { h.setPointerCapture(e.pointerId); } catch (err) { /* ältere Browser */ }
+});
+document.addEventListener('pointermove', (e) => {
+  if (!orderDrag || e.pointerId !== orderDrag.id) return;
+  e.preventDefault();
+  const tb = $('o-rows'), rows = [...tb.querySelectorAll('tr[data-rid]')].filter(r => r !== orderDrag.tr);
+  let before = null;
+  for (const r of rows) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { before = r; break; } }
+  if (before !== orderDrag.tr.nextElementSibling) tb.insertBefore(orderDrag.tr, before);
+  // am Rand automatisch scrollen
+  if (e.clientY < 70) window.scrollBy(0, -12); else if (e.clientY > window.innerHeight - 70) window.scrollBy(0, 12);
+}, { passive: false });
+const endOrderDrag = (e) => {
+  if (!orderDrag || (e && e.pointerId !== orderDrag.id)) return;
+  orderDrag.tr.classList.remove('o-dragging'); document.body.classList.remove('o-drag-active');
+  orderDrag = null;
+  const o = S.orderEdit; if (!o) return;
+  const ids = [...$('o-rows').querySelectorAll('tr[data-rid]')].map(r => r.dataset.rid);
+  const before = o.rows.map(r => r.id).join();
+  o.rows.sort((x, y) => ids.indexOf(x.id) - ids.indexOf(y.id));
+  if (o.rows.map(r => r.id).join() === before) return;
+  $('o-rows').querySelectorAll('tr[data-rid] .o-pos-n').forEach((el, i) => { el.textContent = String(i + 1).padStart(2, '0'); });
+  reopenIfIncomplete(); queueOrderSave(); renderOrderStock();     // Pos.-Nummern beim Lager-Material nachziehen
+};
+document.addEventListener('pointerup', endOrderDrag);
+document.addEventListener('pointercancel', endOrderDrag);
+
 /* ---------- Material aus dem Lager im Auftrag ---------- */
 function renderOrderStock() {
   const o = S.orderEdit, box = $('o-lager'); if (!box) return;
