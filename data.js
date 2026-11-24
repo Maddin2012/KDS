@@ -281,3 +281,55 @@ export function migrateOldData(store = browserStore) {
   }
   return result;
 }
+
+/* Diktierten Satz für einen neuen Artikel in Felder zerlegen, z. B.
+   „Bremsenreiniger 500 ml Artikelnummer BR 500 Kategorie Spraydosen Lagerort Werkstatt
+    Einheit Dose Mindestbestand 6 Preis 3,50 Lieferant Würth“ */
+const NUM_WORDS = { null: 0, eins: 1, ein: 1, eine: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10,
+  elf: 11, zwölf: 12, fünfzehn: 15, zwanzig: 20, dreißig: 30, vierzig: 40, fünfzig: 50, hundert: 100 };
+const UNIT_WORDS = [[/^(liter|l)$/i, 'L'], [/^(stück|stk\.?|stueck)$/i, 'Stk.'], [/^(kilo|kilogramm|kg)$/i, 'kg'], [/^(meter|m)$/i, 'm'],
+  [/^dosen?$/i, 'Dose'], [/^f(a|ä)ss(er)?$/i, 'Fass'], [/^sets?$/i, 'Set'], [/^kartons?$/i, 'Karton'], [/^paar(e)?$/i, 'Paar'], [/^rollen?$/i, 'Rolle']];
+const SPEECH_KEYS = [
+  ['sku', /\b(artikel ?nummer|artikel-?nr\.?|art\.? ?-?nr\.?|bestell ?nummer|teile ?nummer|teile-?nr\.?)\b/i],
+  ['barcode', /\b(ean(-?nummer| code)?|barcode|strich ?code)\b/i],
+  ['minBestand', /\b(mindest ?bestand|mindestmenge|meldebestand)\b/i],
+  ['preis', /\b(einzel ?preis|preis|kostet)\b/i],
+  ['einheit', /\b(einheit)\b/i],
+  ['lagerort', /\b(lager ?ort|liegt im|liegt in der|liegt in)\b/i],
+  ['kat', /\b(kategorie|warengruppe)\b/i],
+  ['gebinde', /\b(gebinde|verpackung|packung)\b/i],
+  ['lieferant', /\b(lieferant|lieferanten|bezugsquelle)\b/i],
+  ['notes', /\b(bemerkung|notiz|hinweis)\b/i],
+];
+export function speechNumber(s) {
+  const t = String(s || '').trim().toLowerCase().replace(/euro|€|stück|liter/g, '').trim();
+  const m = t.match(/-?\d+(?:[.,]\d+)?/); if (m) return parseFloat(m[0].replace(',', '.'));
+  const w = t.split(/\s+/)[0]; return NUM_WORDS[w] !== undefined ? NUM_WORDS[w] : null;
+}
+export function parseArticleSpeech(text, { orte = [], kats = [] } = {}) {
+  const src = String(text || '').replace(/\s+/g, ' ').trim();
+  const hits = [];
+  SPEECH_KEYS.forEach(([key, re]) => {
+    const g = new RegExp(re.source, 'gi'); let m;
+    while ((m = g.exec(src))) hits.push({ key, start: m.index, end: m.index + m[0].length });
+  });
+  hits.sort((a, b) => a.start - b.start);
+  const used = []; hits.forEach(h => { if (!used.some(u => h.start < u.end && h.end > u.start)) used.push(h); });
+  const out = { name: (used.length ? src.slice(0, used[0].start) : src).replace(/[\s,.;:–-]+$/, '').trim() };
+  used.forEach((h, i) => {
+    const val = src.slice(h.end, i + 1 < used.length ? used[i + 1].start : src.length).replace(/^[\s:,.-]+|[\s,.;]+$/g, '').trim();
+    if (val && out[h.key] === undefined) out[h.key] = val;
+  });
+  const pick = (v, list) => { if (!v) return v; const l = v.toLowerCase();
+    return list.find(x => x.toLowerCase() === l) || list.find(x => x.toLowerCase().startsWith(l) || l.startsWith(x.toLowerCase())) || v.charAt(0).toUpperCase() + v.slice(1); };
+  if (out.sku) out.sku = out.sku.toUpperCase().replace(/\s*(bindestrich|minus|strich)\s*/gi, '-').replace(/^([A-ZÄÖÜ]+) (\d)/, '$1-$2');
+  if (out.barcode) out.barcode = out.barcode.replace(/\D/g, '');
+  if (out.minBestand !== undefined) { const n = speechNumber(out.minBestand); out.minBestand = n === null ? '' : n; }
+  if (out.preis !== undefined) { const n = speechNumber(out.preis); out.preis = n === null ? '' : n; }
+  if (out.einheit) { const w = out.einheit.split(' ')[0]; const u = UNIT_WORDS.find(([re]) => re.test(w)); out.einheit = u ? u[1] : out.einheit; }
+  if (out.lagerort) out.lagerort = pick(out.lagerort, orte);
+  if (out.kat) out.kat = pick(out.kat, kats);
+  if (out.name) out.name = out.name.charAt(0).toUpperCase() + out.name.slice(1);
+  if (out.lieferant) out.lieferant = out.lieferant.charAt(0).toUpperCase() + out.lieferant.slice(1);
+  return out;
+}

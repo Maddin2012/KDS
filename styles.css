@@ -1115,3 +1115,21 @@
     .lbl-t span { font-size:7.5pt } .lbl-t small { font-size:6pt; color:#444; font-family:'IBM Plex Mono',monospace; word-break:break-all }
     .lbl.big .lbl-t b { font-size:13pt; -webkit-line-clamp:3 } .lbl.big .lbl-sku { font-size:11pt } .lbl.big .lbl-t span { font-size:9.5pt } .lbl.big .lbl-t small { font-size:7.5pt }
   }
+  /* ---------- Diktieren ---------- */
+  .dk-card { max-width:640px }
+  .mic-big { width:100%; display:flex; align-items:center; justify-content:center; gap:10px; border:2px solid var(--orange); background:var(--orange-lt); color:var(--text);
+    border-radius:10px; padding:14px; font-family:'Barlow Condensed',sans-serif; font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:17px; cursor:pointer }
+  .mic-big .mic-ico { font-size:24px }
+  .mic-big.on, .mic-btn.on { background:#b42318; border-color:#b42318; color:#fff; animation:micPulse 1.2s ease-in-out infinite }
+  @keyframes micPulse { 0%,100% { box-shadow:0 0 0 0 rgba(180,35,24,.45) } 50% { box-shadow:0 0 0 8px rgba(180,35,24,0) } }
+  @media (prefers-reduced-motion: reduce) { .mic-big.on, .mic-btn.on { animation:none } }
+  .dk-hint { font-size:13px; color:var(--steel); margin:8px 0 } .dk-hint i { color:var(--text) }
+  #dk-text { width:100%; border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; font-size:15px; background:var(--surface); color:var(--text); resize:vertical }
+  #dk-text:focus { outline:none; border-color:var(--orange) }
+  .dk-status { font-size:13px; color:#b42318; min-height:4px; margin:4px 0 }
+  .dk-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px } .dk-grid .dk-wide { grid-column:1 / -1 }
+  .dk-grid select { width:100%; border:1px solid var(--line); border-radius:6px; padding:11px 12px; font-size:16px; background:var(--surface); color:var(--text) }
+  .dk-grid .dk-filled { border-color:var(--done) !important; background:#f1faf5 }
+  html[data-theme="dark"] .dk-grid .dk-filled { background:#16352a }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .dk-grid .dk-filled { background:#16352a } }
+  @media (max-width:520px) { .dk-grid { grid-template-columns:1fr } }

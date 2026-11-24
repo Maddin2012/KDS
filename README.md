@@ -151,6 +151,14 @@ Ausdruck. Direkt bei einer Position geht das über **„+ Lager“** unter *Mate
 die Entnahme wird dann auch dort eingetragen. Mit ✕ wird die Menge wieder ins Lager zurückgebucht. Bei abgeschlossenen
 Aufträgen geht das nur noch für SE und KÖ.
 
+**Diktieren.** „+ Artikel“ öffnet ein Fenster mit **🎤 Sprechen**: einen Satz sagen wie
+„Bremsenreiniger 500 ml, Artikelnummer BR 500, Kategorie Spraydosen, Lagerort Werkstatt, Einheit Dose,
+Mindestbestand 6, Preis 3,50, Lieferant Würth“ – die Felder werden automatisch ausgefüllt (grün) und
+lassen sich vor dem Anlegen korrigieren. Erkannte Stichworte: Artikelnummer, EAN/Barcode, Kategorie,
+Lagerort, Einheit, Gebinde, Mindestbestand, Preis, Lieferant, Bemerkung. In den Stammdaten haben
+Bezeichnung und Bemerkungen ein eigenes 🎤. Nutzt die Spracherkennung des Browsers (Chrome, Safari);
+wo es die nicht gibt, hilft die Mikrofon-Taste der Handy-Tastatur.
+
 **Barcode scannen.** In der Artikelliste neben der Suche **📷** antippen und den Barcode vor die
 Kamera halten: Beim passenden Artikel klappt sofort das Buchungsfeld auf. Unbekannte Codes können
 SE/KÖ direkt einem Artikel zuordnen oder einen neuen Artikel damit anlegen; in den Stammdaten gibt es

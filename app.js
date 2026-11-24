@@ -6,7 +6,7 @@
 import {
   CATEGORIES, MONTEURE, ADMINS, isAdmin, monteurLabel, defaultTemplate, newId, todayIso,
   emptyDraft, migrateOldData, storeFromMap, TEXT_FIX_VERSION, fixTemplateTexts,
-  legacyFleet, VEHICLE_FIELDS, vehicleLabel, FLEET_GROUPS, parseFleetRows
+  legacyFleet, VEHICLE_FIELDS, vehicleLabel, FLEET_GROUPS, parseFleetRows, parseArticleSpeech
 } from './data.js';
 import { createLocalStore } from './store-local.js';
 
@@ -691,19 +691,115 @@ function openArticle(id) {
   subscribeBookings(id);
   S.view = 'article'; render(); window.scrollTo(0, 0);
 }
+/* ---------- Diktieren (Spracherkennung des Browsers, Deutsch) ---------- */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+/* Startet die Spracherkennung; onText(endgültig, vorläufig), onState('start'|'end'|'error', grund). Rückgabe: stop() */
+function startDictation(onText, onState) {
+  const r = new SpeechRec();
+  r.lang = 'de-DE'; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+  let fin = '';
+  r.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript.trim();
+      if (!t) continue;
+      if (e.results[i].isFinal) fin = (fin ? fin + ' ' : '') + t; else interim += (interim ? ' ' : '') + t;
+    }
+    onText(fin, interim);
+  };
+  r.onerror = (e) => onState('error', e.error);
+  r.onend = () => onState('end');
+  try { r.start(); onState('start'); } catch (e) { onState('error', 'start'); }
+  return () => { try { r.stop(); } catch (e) { /* schon beendet */ } };
+}
+const dictErr = (why) => why === 'not-allowed' || why === 'service-not-allowed' ? 'Mikrofon nicht erlaubt – in den Einstellungen des Geräts freigeben.'
+  : why === 'no-speech' ? 'Nichts verstanden – bitte nochmal.' : why === 'network' ? 'Spracherkennung braucht Internet.' : 'Diktieren hat nicht geklappt.';
+
+/* Neuer Artikel: diktieren oder tippen – die Felder werden aus dem Satz erkannt */
 async function newArticle(barcode = '') {
   if (!amAdmin()) return;
-  const name = await promptModal(barcode ? `Bezeichnung des neuen Artikels (Code ${barcode}):` : 'Bezeichnung des neuen Artikels:', 'Anlegen', { value: '' });
-  if (!name || !name.trim()) return;
-  const id = S.store.newArticleId();
-  const d = { sku: '', barcode: barcode || '', name: name.trim(), kat: 'Verbrauchsmaterial', einheit: 'Stk.', gebinde: '', lagerort: DEFAULT_ORTE[0],
-    minBestand: 0, preis: 0, notes: '', suppliers: [] };
-  try {
-    S.store.saveArticle(id, d, S.me, true).catch(err => { if (err && err.code === 'permission-denied') adminRejected(); });
-    S.articles.push({ ...d, id, bestand: 0 });
-    openArticle(id);
-    showToast('Artikel angelegt – Bestand über „+ Zulauf“ einbuchen');
-  } catch (e) { showToast('Artikel konnte nicht angelegt werden'); }
+  const ov = $('setup');
+  const F = [['name', 'Bezeichnung *'], ['sku', 'Art.-Nr.'], ['barcode', 'Barcode / EAN'], ['kat', 'Kategorie'], ['lagerort', 'Lagerort'],
+    ['einheit', 'Einheit'], ['gebinde', 'Gebinde'], ['minBestand', 'Mindestbestand'], ['preis', 'Einzelpreis (€)'], ['lieferant', 'Lieferant']];
+  const touched = new Set();
+  ov.innerHTML = `<div class="setup-card dk-card">${cardHead}<h3>Neuer Artikel</h3>
+    ${SpeechRec ? `<button class="mic-big" type="button" data-d="mic" id="dk-mic"><span class="mic-ico">🎤</span><span id="dk-mic-l">Sprechen</span></button>`
+      : '<p class="dk-hint">Tipp: Über die <b>Mikrofon-Taste der Tastatur</b> lässt sich in das Feld unten diktieren.</p>'}
+    <p class="dk-hint">Zum Beispiel: <i>„Bremsenreiniger 500 ml, Artikelnummer BR 500, Kategorie Spraydosen, Lagerort Werkstatt, Einheit Dose, Mindestbestand 6, Preis 3,50, Lieferant Würth“</i></p>
+    <textarea id="dk-text" rows="3" placeholder="Hier erscheint das Gesprochene – oder einfach tippen"></textarea>
+    <div class="dk-status" id="dk-status"></div>
+    <div class="dk-grid">${F.map(([k, l]) => `<div class="field${k === 'name' ? ' dk-wide' : ''}"><label for="dk-${k}">${l}</label>${k === 'einheit'
+      ? `<select id="dk-${k}" data-k="${k}">${EINHEITEN.map(u => `<option>${u}</option>`).join('')}</select>`
+      : `<input id="dk-${k}" data-k="${k}" autocomplete="off" ${k === 'kat' ? 'list="dk-kats"' : k === 'lagerort' ? 'list="dk-orte"' : ''} ${['minBestand', 'preis', 'barcode'].includes(k) ? 'inputmode="decimal"' : ''}>`}</div>`).join('')}</div>
+    <datalist id="dk-kats">${kategorien().map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+    <datalist id="dk-orte">${lagerorte().map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+    <div class="setup-err" id="dk-err"></div>
+    <button class="btn-big" type="button" data-d="save">Artikel anlegen</button>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
+  ov.classList.remove('hidden');
+  $('dk-barcode').value = barcode || ''; $('dk-einheit').value = 'Stk.'; $('dk-kat').value = 'Verbrauchsmaterial'; $('dk-lagerort').value = DEFAULT_ORTE[0];
+  if (barcode) touched.add('barcode');
+  const apply = () => {
+    const p = parseArticleSpeech($('dk-text').value, { orte: lagerorte(), kats: kategorien() });
+    F.forEach(([k]) => { if (touched.has(k) || p[k] === undefined || p[k] === '') return;
+      const el = $('dk-' + k); if (k === 'einheit' && !EINHEITEN.includes(p[k])) return; el.value = typeof p[k] === 'number' ? String(p[k]).replace('.', ',') : p[k]; el.classList.add('dk-filled'); });
+  };
+  let stop = null;
+  const setMic = (on) => { const b = $('dk-mic'); if (!b) return; b.classList.toggle('on', on); $('dk-mic-l').textContent = on ? 'Zuhören … (antippen zum Beenden)' : 'Sprechen'; };
+  const close = () => { if (stop) stop(); ov.classList.add('hidden'); ov.onclick = null; ov.oninput = null; ov.onchange = null; };
+  ov.oninput = (e) => { if (e.target.id === 'dk-text') apply(); else if (e.target.dataset.k) { touched.add(e.target.dataset.k); e.target.classList.remove('dk-filled'); } };
+  ov.onchange = (e) => { if (e.target.dataset.k) touched.add(e.target.dataset.k); };
+  ov.onclick = async (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    if (e.target.closest('[data-d="mic"]')) {
+      if (stop) { stop(); return; }
+      const base = $('dk-text').value.trim();
+      stop = startDictation((fin, interim) => { $('dk-text').value = [base, fin, interim].filter(Boolean).join(' '); apply(); },
+        (st, why) => {
+          if (st === 'start') { setMic(true); $('dk-status').textContent = ''; }
+          if (st === 'error') $('dk-status').textContent = dictErr(why);
+          if (st === 'end' || st === 'error') { stop = null; setMic(false); }
+        });
+      return;
+    }
+    if (e.target.closest('[data-d="save"]')) {
+      const v = (k) => $('dk-' + k).value.trim();
+      if (!v('name')) { $('dk-err').textContent = 'Bitte eine Bezeichnung angeben.'; $('dk-name').focus(); return; }
+      if (stop) stop();
+      const id = S.store.newArticleId();
+      const d = { sku: v('sku'), barcode: v('barcode').replace(/\s/g, ''), name: v('name'), kat: v('kat') || 'Verbrauchsmaterial', einheit: v('einheit') || 'Stk.',
+        gebinde: v('gebinde'), lagerort: v('lagerort') || DEFAULT_ORTE[0], minBestand: num(v('minBestand')), preis: num(v('preis')), notes: '',
+        suppliers: v('lieferant') ? [{ name: v('lieferant'), bestellNr: v('sku'), gebinde: v('gebinde'), preis: num(v('preis')) }] : [] };
+      // neue Kategorie / neuer Lagerort gleich in die Auswahl übernehmen
+      const cfg = {};
+      if (!kategorien().includes(d.kat)) cfg.kategorien = [...new Set([...(S.lagerCfg.kategorien || []), d.kat])];
+      if (!lagerorte().includes(d.lagerort)) cfg.lagerorte = [...new Set([...(S.lagerCfg.lagerorte || []), d.lagerort])];
+      if (Object.keys(cfg).length) { S.lagerCfg = { ...S.lagerCfg, ...cfg }; S.store.saveLagerCfg(cfg).catch(() => {}); }
+      close();
+      try {
+        S.store.saveArticle(id, d, S.me, true).catch(err => { if (err && err.code === 'permission-denied') adminRejected(); });
+        S.articles.push({ ...d, id, bestand: 0 });
+        openArticle(id);
+        showToast('Artikel angelegt – Bestand über „+ Zulauf“ einbuchen');
+      } catch (err) { showToast('Artikel konnte nicht angelegt werden'); }
+    }
+  };
+  setTimeout(() => { const b = $('dk-mic'); (b || $('dk-text')).focus(); }, 40);
+}
+/* 🎤 an einzelnen Feldern (Stammdaten): Gesprochenes wird angehängt */
+let fieldDictStop = null;
+function dictateIntoField(btn) {
+  if (fieldDictStop) { fieldDictStop(); return; }
+  const el = $('view-article').querySelector(`[data-af="${btn.dataset.target}"]`); if (!el || el.disabled) return;
+  const base = el.value.trim();
+  fieldDictStop = startDictation((fin, interim) => {
+    el.value = [base, fin, interim].filter(Boolean).join(btn.dataset.target === 'notes' ? ' ' : ' ');
+    onArticleInput(el, 'input');
+  }, (st, why) => {
+    if (st === 'start') btn.classList.add('on');
+    if (st === 'error') showToast(dictErr(why));
+    if (st === 'end' || st === 'error') { fieldDictStop = null; btn.classList.remove('on'); }
+  });
 }
 
 function renderArticle() {
@@ -744,7 +840,7 @@ function renderArticle() {
         <div class="o-field"><label>Art.-Nr.</label><input data-af="sku" value="${esc(x.sku)}" ${dis} placeholder="z. B. HLP-46"></div>
         <div class="o-field"><label>Barcode / EAN</label><div class="bc-wrap"><input data-af="barcode" id="art-barcode" value="${esc(x.barcode || '')}" ${dis} placeholder="scannen oder eintippen" inputmode="numeric">
           ${admin ? '<button class="scan-btn sm no-print" data-act="scan-art-barcode" type="button" title="Barcode scannen">📷</button>' : ''}</div></div>
-        <div class="o-field art-wide"><label>Bezeichnung</label><input data-af="name" value="${esc(x.name)}" ${dis}></div>
+        <div class="o-field art-wide"><label>Bezeichnung</label><div class="bc-wrap"><input data-af="name" value="${esc(x.name)}" ${dis}>${admin && SpeechRec ? '<button class="scan-btn sm mic-btn no-print" data-act="dictate-field" data-target="name" type="button" title="Diktieren">🎤</button>' : ''}</div></div>
         <div class="o-field"><label>Kategorie</label><select data-af="kat" ${dis}>${optList(kategorien(), x.kat, '+ Neue Kategorie …')}</select></div>
         <div class="o-field"><label>Lagerort</label><select data-af="lagerort" ${dis}>${optList(lagerorte(), x.lagerort, '+ Neuer Lagerort …')}</select></div>
         <div class="o-field"><label>Einheit</label><select data-af="einheit" ${dis}>${[...new Set([...EINHEITEN, x.einheit])].map(v => `<option ${v === x.einheit ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
@@ -769,7 +865,7 @@ function renderArticle() {
     </div>
 
     <div class="box">
-      <div class="sec-title"><div class="title-left"><span>Bemerkungen / Hinweise</span></div></div>
+      <div class="sec-title"><div class="title-left"><span>Bemerkungen / Hinweise</span></div>${admin && SpeechRec ? '<button class="scan-btn sm mic-btn no-print" data-act="dictate-field" data-target="notes" type="button" title="Diktieren">🎤</button>' : ''}</div>
       <textarea class="o-ta o-notes" data-af="notes" rows="3" ${dis} placeholder="Spezifikation, Freigaben, Ersatz-Teilenummern …">${esc(x.notes)}</textarea>
     </div>
 
@@ -3170,6 +3266,7 @@ const actions = {
   'new-order': () => openNewOrder(),
   'new-article': () => newArticle(),
   'labels': () => { const ids = S.expandedArt ? [S.expandedArt] : []; openLabelDialog(ids); },
+  'dictate-field': (btn) => dictateIntoField(btn),
   'label-one': () => { if (S.artEdit) openLabelDialog([S.artEdit.id]); },
   'scan-art-barcode': async () => {
     if (!amAdmin() || !S.artEdit) return;
