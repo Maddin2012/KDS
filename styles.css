@@ -1135,3 +1135,11 @@
   @media (max-width:520px) { .dk-grid { grid-template-columns:1fr } }
   .lo-row { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:8px 10px }
   .lo-row small { display:block; color:var(--steel); font-size:12px } .lo-row .btn-sec { padding:7px 10px }
+  /* Neuer Auftrag: Fahrzeugsuche */
+  .no-list { max-height:min(320px, 40vh) }
+  .no-chosen { display:flex; justify-content:space-between; align-items:center; gap:10px; border:2px solid var(--done); background:#f1faf5; border-radius:8px; padding:10px 12px; margin-bottom:8px }
+  .no-chosen small { display:block; color:var(--steel); font-size:12px }
+  html[data-theme="dark"] .no-chosen { background:#16352a } @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .no-chosen { background:#16352a } }
+  .no-free-hint { font-size:13px; color:var(--steel); background:var(--line-2); border-radius:6px; padding:8px 10px; margin-bottom:8px }
+  .no-free-hint.ok { background:#f1faf5; color:var(--text); border:1px solid #b8e0cc }
+  html[data-theme="dark"] .no-free-hint.ok { background:#16352a; border-color:#24563f } @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .no-free-hint.ok { background:#16352a; border-color:#24563f } }

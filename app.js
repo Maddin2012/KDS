@@ -1635,35 +1635,62 @@ function openNewOrder(pre = {}) {
   const vehicles = sortVehicles(S.vehicles);
   const curVeh = change ? (S.orderEdit && S.orderEdit.vehId) : pre.vehId;
   const freeName = change ? (S.orderEdit && !S.orderEdit.vehId ? S.orderEdit.fahrzeug : '') : (!pre.vehId ? (pre.freeName || '') : '');
-  ov.innerHTML = `<div class="setup-card">${cardHead}
+  let selId = curVeh && vehicles.some(v => v.id === curVeh) ? curVeh : '';
+  ov.innerHTML = `<div class="setup-card osp-card">${cardHead}
     <h3>${change ? 'Fahrzeug ändern' : 'Neuer Werkstattauftrag'}</h3>
-    <p>${change ? 'Die Auftragsnummer bleibt unverändert.' : 'Fahrzeug wählen – Kennzeichen und Werk-Nr. werden übernommen. Die Nummer wird fortlaufend vergeben.'}
+    <p>${change ? 'Die Auftragsnummer bleibt unverändert.' : 'Fahrzeug suchen (ID, Kennzeichen, Typ, Fahrer …) und antippen. Nicht im Fuhrpark? Einfach den Namen eintippen.'}
       ${pre.rows && pre.rows.length ? `<br><b>${pre.rows.length} offene Mängel</b> werden als Positionen übernommen.` : ''}</p>
     <form id="no-form" novalidate>
-      <div class="field"><label for="no-veh">Fahrzeug aus dem Fuhrpark</label>
-        <select id="no-veh">
-          ${vehicles.map(v => `<option value="${esc(v.id)}" ${v.id === curVeh ? 'selected' : ''}>${esc(vehicleLabel(v))}${v.kz ? ' · ' + esc(v.kz) : ''}</option>`).join('')}
-          <option value="" ${!curVeh && (freeName || !vehicles.length) ? 'selected' : ''}>— anderes Fahrzeug (nicht im Fuhrpark) —</option>
-        </select></div>
-      <div class="field" id="no-free-wrap"><label for="no-free">Fahrzeug (frei)</label>
-        <input id="no-free" value="${esc(freeName)}" placeholder="z. B. Werkstatt-Stapler" autocomplete="off"></div>
+      <div class="field"><label for="no-q">Fahrzeug</label>
+        <input id="no-q" type="search" enterkeyhint="done" autocomplete="off" placeholder="z. B. 243, HH-KS 6243, LTM …" value="${esc(selId ? '' : freeName)}"></div>
+      <div id="no-sel" class="no-sel"></div>
+      <div id="no-list" class="osp-list no-list"></div>
       <button class="btn-big" type="submit">${change ? 'Übernehmen' : 'Auftrag anlegen'}</button>
       <div class="setup-err" id="no-err"></div>
     </form>
     <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div>
   </div>`;
   ov.classList.remove('hidden');
-  const sync = () => { $('no-free-wrap').style.display = $('no-veh').value ? 'none' : ''; };
-  sync();
-  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.onchange = null; };
-  ov.onchange = (e) => { if (e.target.id === 'no-veh') sync(); };
-  ov.onclick = (e) => { if (e.target.closest('[data-n="close"]')) close(); };
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\s-]+/g, '');
+  const draw = () => {
+    const q = $('no-q').value.trim(), nq = norm(q);
+    const sel = vehicles.find(v => v.id === selId);
+    $('no-sel').innerHTML = sel ? `<div class="no-chosen"><span>✓ <b>${esc(vehicleLabel(sel))}</b><small>${esc([sel.kz, sel.gruppe, sel.fahrer].filter(Boolean).join(' · '))}</small></span>
+        <button type="button" class="link-btn" data-n="unsel">ändern</button></div>`
+      : (() => { if (!q) return '';
+          const ex = vehicles.filter(x => norm(x.code) === nq || norm(x.kz) === nq);
+          if (ex.length === 1) return `<div class="no-free-hint ok">„<b>${esc(q)}</b>“ = <b>${esc(vehicleLabel(ex[0]))}</b> – antippen oder direkt „Auftrag anlegen“.</div>`;
+          return `<div class="no-free-hint">Fahrzeug aus der Liste antippen – ohne Auswahl wird „<b>${esc(q)}</b>“ als freies Fahrzeug eingetragen.</div>`; })();
+    if (sel && !q) { $('no-list').innerHTML = ''; return; }
+    const hits = vehicles.filter(v => !nq || [v.code, v.kz, v.typ, v.hersteller, v.fahrer, v.gruppe, v.werk].some(f => norm(f).includes(nq)));
+    // genaue ID-Treffer zuerst
+    hits.sort((x, y) => (norm(y.code) === nq) - (norm(x.code) === nq));
+    $('no-list').innerHTML = hits.slice(0, 40).map(v => `<button type="button" class="osp-item${v.id === selId ? ' on' : ''}" data-vid="${esc(v.id)}">
+        <span><b>${esc(vehicleLabel(v))}</b><small>${esc([v.kz, v.gruppe, v.fahrer].filter(Boolean).join(' · '))}</small></span></button>`).join('')
+      + (hits.length > 40 ? `<p class="proto-meta">… ${hits.length - 40} weitere – genauer suchen</p>` : '')
+      + (!hits.length && q ? '<p class="proto-meta">Kein Fahrzeug im Fuhrpark gefunden.</p>' : '');
+  };
+  draw();
+  const qi = $('no-q'); qi.focus();          // sofort (im Tipp-Ereignis), damit am Handy die Tastatur aufgeht
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; ov.onsubmit = null; ov.onchange = null; ov.oninput = null; };
+  ov.oninput = (e) => { if (e.target.id === 'no-q') { if (e.target.value.trim()) selId = ''; draw(); } };
+  ov.onclick = (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    if (e.target.closest('[data-n="unsel"]')) { selId = ''; draw(); $('no-q').focus(); return; }
+    const it = e.target.closest('.osp-item[data-vid]');
+    if (it) { selId = it.dataset.vid; $('no-q').value = ''; $('no-err').textContent = ''; draw(); if (document.activeElement) document.activeElement.blur(); }
+  };
   ov.onsubmit = async (e) => {
     e.preventDefault();
-    const v = S.vehicles.find(x => x.id === $('no-veh').value);
-    const free = $('no-free').value.trim();
-    if (!v && !free) { $('no-err').textContent = 'Bitte ein Fahrzeug wählen oder eintragen.'; return; }
-    const veh = v ? { vehId: v.id, fahrzeug: v.typ || '', code: v.code || '', werk: v.werk || '', kz: v.kz || '' }
+    const v = S.vehicles.find(x => x.id === selId);
+    let free = $('no-q').value.trim();
+    // Eingabe passt genau zu einer ID bzw. einem Kennzeichen → dieses Fahrzeug nehmen
+    const exact = !v && free ? vehicles.filter(x => norm(x.code) === norm(free) || norm(x.kz) === norm(free)) : [];
+    const vv = v || (exact.length === 1 ? exact[0] : null);
+    if (vv) free = '';
+    if (!vv && !free) { $('no-err').textContent = 'Bitte ein Fahrzeug suchen und antippen oder einen Namen eintragen.'; $('no-q').focus(); return; }
+    const v2 = vv;
+    const veh = v2 ? { vehId: v2.id, fahrzeug: v2.typ || '', code: v2.code || '', werk: v2.werk || '', kz: v2.kz || '' }
                   : { vehId: '', fahrzeug: free, code: '', werk: '', kz: '' };
     if (change) {
       Object.assign(S.orderEdit, veh); reopenIfIncomplete(); close(); renderOrder(); queueOrderSave(); return;
@@ -1684,7 +1711,10 @@ function openNewOrder(pre = {}) {
       S.store.saveOrder(o.id, pickOrder(o), S.me).catch(() => showToast('Auftrag konnte nicht gespeichert werden'));
       close();
       S.openOrderId = o.id; S.orderEdit = o; S.orderDirty = false; S.orderIsNew = o.id; S.view = 'order'; render(); window.scrollTo(0, 0);
-      showToast('Auftrag ' + o.nr + ' angelegt');
+      if (window.innerWidth <= 940) document.querySelector('.app').classList.add('sidebar-collapsed');
+      showToast('Auftrag ' + o.nr + ' angelegt – jetzt Arbeiten eintragen');
+      // gleich in die erste Position springen (am PC; am Handy erst beim Antippen, sonst verdeckt die Tastatur alles)
+      if (window.innerWidth > 940) setTimeout(() => { const t = $('view-order').querySelector('textarea[data-f="text"]'); if (t && !t.value) t.focus(); }, 80);
     } catch (err) {
       console.error(err);
       $('no-err').textContent = (err && err.message) || 'Auftrag konnte nicht angelegt werden.';
