@@ -78,7 +78,7 @@ function loadDraft(cat) {
   return { ...e, ...d, header: { ...e.header, ...(d.header || {}) } };
 }
 let draft = loadDraft(S.cat);
-function saveDraft() { lsSet(draftKey(S.cat), JSON.stringify(draft)); }
+function saveDraft() { lsSet(draftKey(S.cat), JSON.stringify(draft)); if (draft.header && draft.header.orderId && typeof scheduleSvcSync === 'function') scheduleSvcSync(); }
 
 /* ---------- Kleine Helfer: Toast & Bestätigung ---------- */
 function showToast(msg) {
@@ -1157,6 +1157,7 @@ function renderOrders() {
 }
 
 function openOrder(id) {
+  flushSvcSync();
   const o = S.orders.find(x => x.id === id);
   if (!o) return;
   flushOrderSave();
@@ -1524,22 +1525,35 @@ async function openOrderSvc(idx) {
   openOrderDraft(x.cat);
 }
 /* „✓ Zum Auftrag hinzufügen“: laufende Serviceliste im Auftrag speichern (für alle Geräte sichtbar) */
-async function saveDraftToOrder() {
+/* Laufende Serviceliste in den Auftrag schreiben (für alle Geräte). Wird bei jeder Änderung
+   automatisch kurz verzögert aufgerufen – Haken bleiben also erhalten, auch ohne „Zum Auftrag hinzufügen“. */
+function storeDraftInOrder(quiet) {
   const oid = draft.header && draft.header.orderId;
   const base = oid && (S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : S.orders.find(x => x.id === oid));
-  if (!base) { showToast('Der Auftrag wurde nicht gefunden'); return; }
+  if (!base) { if (!quiet) showToast('Der Auftrag wurde nicht gefunden'); return null; }
   const o = S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : normalizeOrder(base);
-  if (orderLocked(o)) { showToast('Der Auftrag ist abgeschlossen – ändern können nur SE und KÖ'); return; }
+  if (orderLocked(o)) { if (!quiet) showToast('Der Auftrag ist abgeschlossen – ändern können nur SE und KÖ'); return null; }
   const { svcTs, ...clean } = JSON.parse(JSON.stringify(draft));
-  const entry = { cat: S.cat, draft: clean, von: S.me || '', ts: Date.now() };
   const i = o.svc.findIndex(x => x.cat === S.cat);
+  const entry = { ...(i >= 0 ? o.svc[i] : {}), cat: S.cat, draft: clean, von: S.me || '', ts: Date.now() };   // protoId u. ä. behalten
   if (i >= 0) o.svc[i] = entry; else o.svc.push(entry);
   const data = pickOrder(o); data.rows = o.rows.map(r => ({ id: r.id, text: r.text || '', mat: r.mat || '', h: r.h || '', done: !!r.done }));
   const local = S.orders.find(x => x.id === oid); if (local) local.svc = o.svc;
-  S.store.saveOrder(oid, data, S.me).catch((err) => showToast(err && err.code === 'permission-denied' ? 'Nicht gespeichert – der Auftrag ist abgeschlossen' : 'Speichern fehlgeschlagen'));
+  S.store.saveOrder(oid, data, S.me).catch((err) => showToast(err && err.code === 'permission-denied' ? 'Nicht gespeichert – der Auftrag ist abgeschlossen' : 'Serviceliste konnte nicht im Auftrag gespeichert werden'));
+  draft.svcTs = entry.ts; lsSet(draftKey(S.cat), JSON.stringify(draft));
+  return { o, entry };
+}
+let svcSyncTimer = null;
+function scheduleSvcSync() { clearTimeout(svcSyncTimer); svcSyncTimer = setTimeout(() => { svcSyncTimer = null; storeDraftInOrder(true); }, 700); }
+function flushSvcSync() { if (svcSyncTimer) { clearTimeout(svcSyncTimer); svcSyncTimer = null; storeDraftInOrder(true); } }
+/* „✓ Zum Auftrag hinzufügen“: speichern und zurück in den Auftrag */
+async function saveDraftToOrder() {
+  clearTimeout(svcSyncTimer); svcSyncTimer = null;
+  const oid = draft.header && draft.header.orderId;
+  const r = storeDraftInOrder(false); if (!r) return;
   draft = emptyDraft(); saveDraft();
   openOrder(oid);
-  showToast(`Serviceliste ${entry.cat} zum Auftrag ${o.nr} hinzugefügt`);
+  showToast(`Serviceliste ${r.entry.cat} zum Auftrag ${r.o.nr} hinzugefügt`);
 }
 /* Beim Abschließen des Auftrags: Servicelisten ins Archiv (→ auch in die Historie des Fahrzeugs) */
 async function archiveOrderServices(o) {
@@ -1683,7 +1697,8 @@ function saveOrderNow() {
   const el = $('o-saved'); if (el) el.textContent = navigator.onLine ? 'wird gespeichert …' : 'offline gespeichert – wird übertragen';
 }
 function flushOrderSave() { if (orderSaveTimer) saveOrderNow(); }
-window.addEventListener('pagehide', flushOrderSave);
+window.addEventListener('pagehide', () => { flushSvcSync(); flushOrderSave(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSvcSync(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushOrderSave(); });
 
 /* Neuer Auftrag bzw. Fahrzeug wechseln: Fahrzeug aus dem Fuhrpark wählen */
@@ -2328,6 +2343,7 @@ function templateChanged(immediate) {
   if (immediate) doSave(); else saveTimer = setTimeout(doSave, 700);
 }
 function flushTemplateSave() {
+  flushSvcSync();       // laufende Serviceliste eines Auftrags vor jedem Seitenwechsel in den Auftrag schreiben
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; templateChanged(true); }
 }
 /* Platzhalter und leere Zeilen nicht speichern */
