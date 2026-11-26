@@ -24,6 +24,13 @@ Die Eingaben bleiben auf dem Gerät gespeichert, bis das Protokoll abgeschlossen
 Ohne Netz geht das genauso – übertragen wird, sobald wieder Verbindung besteht
 (im Archiv mit ⟳ markiert).
 
+**Live mitverfolgen.** Servicelisten sind auf allen Geräten live: Hakt der Monteur draußen in einer
+Serviceliste aus einem Auftrag ab, sieht man es auf jedem anderen Gerät, auf dem dieselbe Liste offen ist,
+binnen Sekunden („● aktualisiert von …“). *Serviceliste* → **Laufende Listen** zeigt alle gerade bearbeiteten
+Listen aller Geräte mit Fortschrittsbalken (x von y geprüft, n.i.O.), Bearbeiter und letzter Änderung;
+antippen öffnet sie – fremde freie Listen als Live-Ansicht zum Mitlesen. Abgeschlossene Listen
+verschwinden von selbst; Admins können verwaiste Einträge entfernen.
+
 **Archiv.** Alle abgeschlossenen Protokolle aller Geräte, neueste zuerst.
 Suche nach Fahrzeug, Monteur, Prüfpunkt oder Bemerkung, Filter nach Kategorie.
 Ein Protokoll lässt sich öffnen und erneut drucken.

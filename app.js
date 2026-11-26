@@ -37,6 +37,8 @@ const S = {
   selVeh: null,             // im Fuhrpark markiertes Fahrzeug
   ordersFilter: '',
   openVehId: null,          // geöffnete Fahrzeugakte
+  running: [],              // laufende Servicelisten aller Geräte (Live-Übersicht)
+  liveId: null,             // in der Live-Ansicht geöffnete fremde Liste
   akteTab: 'historie',
   akte: {}, akteNotes: [], akteFiles: [],         // Werkstattaufträge: '' alle | offen | arbeit | fertig (Auswahl in der Seitenleiste)
   fleetEdit: false,         // Fuhrpark-Blatt im Bearbeitungsmodus (Stift)
@@ -78,7 +80,12 @@ function loadDraft(cat) {
   return { ...e, ...d, header: { ...e.header, ...(d.header || {}) } };
 }
 let draft = loadDraft(S.cat);
-function saveDraft() { lsSet(draftKey(S.cat), JSON.stringify(draft)); if (draft.header && draft.header.orderId && typeof scheduleSvcSync === 'function') scheduleSvcSync(); }
+function saveDraft() {
+  lsSet(draftKey(S.cat), JSON.stringify(draft));
+  if (typeof scheduleSvcSync !== 'function') return;
+  if (draft.header && draft.header.orderId) scheduleSvcSync();     // Liste gehört zu einem Auftrag → dort speichern
+  else scheduleRunningPublish();                                   // freie Liste → für die Live-Übersicht veröffentlichen
+}
 
 /* ---------- Kleine Helfer: Toast & Bestätigung ---------- */
 function showToast(msg) {
@@ -151,7 +158,7 @@ function promptModal(message, okLabel, { value = '', type = 'text', inputmode = 
    Die Gruppe der gerade geöffneten Seite ist immer aufgeklappt. */
 /* Gruppen der geöffneten Seite (äußere zuerst) – diese bleiben immer aufgeklappt */
 const activeGroups = () => (S.view === 'stock' || S.view === 'article' || S.view === 'reorder') ? ['lager']
-  : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol') ? ['werkstatt', 'orders', 'service']
+  : (S.view === 'list' || S.view === 'archive' || S.view === 'protocol' || S.view === 'live' || S.view === 'liveview') ? ['werkstatt', 'orders', 'service']
   : (S.view === 'orders' || S.view === 'order') ? ['werkstatt', 'orders']
   : (S.view === 'fleet' || S.view === 'vehicle') ? ['werkstatt'] : [];
 const viewGroup = () => activeGroups().slice(-1)[0] || '';
@@ -193,6 +200,7 @@ function renderNav() {
     nav.appendChild(el);
   });
   $('nav-archive').classList.toggle('active', S.view === 'archive' || S.view === 'protocol');
+  $('nav-live').classList.toggle('active', S.view === 'live' || S.view === 'liveview');
   $('nav-fleet').classList.toggle('active', S.view === 'fleet' || S.view === 'vehicle');
   document.querySelectorAll('#nav-orders .nav-item[data-ostatus]').forEach(n => n.classList.toggle('active',
     (S.view === 'orders' || S.view === 'order') && (n.dataset.ostatus || '') === S.ordersFilter));
@@ -225,6 +233,8 @@ function renderChrome() {
 
   let title;
   if (mode === 'home') title = 'Startseite';
+  else if (mode === 'live') title = 'Laufende Servicelisten';
+  else if (mode === 'liveview') { const r = S.running.find(x => x.id === S.liveId); title = 'Live: ' + (r ? r.cat + ' ' + ((r.draft && r.draft.header && r.draft.header.fId) || '') : 'Serviceliste'); }
   else if (mode === 'archive') title = 'Archiv';
   else if (mode === 'fleet') title = 'Fuhrpark';
   else if (mode === 'vehicle') { const v = S.vehicles.find(x => x.id === S.openVehId); title = 'Fahrzeugakte ' + (v ? (v.code || v.typ || '') : ''); }
@@ -239,13 +249,14 @@ function renderChrome() {
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
   $('hero-badge').innerHTML = mode === 'order' && S.orderEdit ? statusBadge(S.orderEdit.status) : '';
-  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'live' || mode === 'liveview') ? 'Laufende Listen' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-home').classList.toggle('hidden', S.view !== 'home');
   document.body.classList.toggle('is-home', S.view === 'home');
   $('view-list').classList.toggle('hidden', S.view !== 'list');
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
+  $('view-live').classList.toggle('hidden', S.view !== 'live' && S.view !== 'liveview');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
   $('view-vehicle').classList.toggle('hidden', S.view !== 'vehicle');
@@ -254,7 +265,7 @@ function renderChrome() {
   $('view-stock').classList.toggle('hidden', S.view !== 'stock');
   $('view-article').classList.toggle('hidden', S.view !== 'article');
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
-  $('cards').classList.toggle('hidden', ['home', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
+  $('cards').classList.toggle('hidden', ['home', 'live', 'liveview', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   renderOrderLink();
   const cp = document.querySelector('#hero-actions [data-act="close-protocol"]');
@@ -1529,9 +1540,10 @@ async function openOrderSvc(idx) {
    automatisch kurz verzögert aufgerufen – Haken bleiben also erhalten, auch ohne „Zum Auftrag hinzufügen“. */
 function storeDraftInOrder(quiet) {
   const oid = draft.header && draft.header.orderId;
-  const base = oid && (S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : S.orders.find(x => x.id === oid));
+  // immer vom neuesten Stand des Auftrags ausgehen (andere Geräte ändern ihn evtl. gleichzeitig)
+  const base = oid && (S.orders.find(x => x.id === oid) || (S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : null));
   if (!base) { if (!quiet) showToast('Der Auftrag wurde nicht gefunden'); return null; }
-  const o = S.orderEdit && S.orderEdit.id === oid ? S.orderEdit : normalizeOrder(base);
+  const o = normalizeOrder(base);
   if (orderLocked(o)) { if (!quiet) showToast('Der Auftrag ist abgeschlossen – ändern können nur SE und KÖ'); return null; }
   const { svcTs, ...clean } = JSON.parse(JSON.stringify(draft));
   const i = o.svc.findIndex(x => x.cat === S.cat);
@@ -1539,13 +1551,100 @@ function storeDraftInOrder(quiet) {
   if (i >= 0) o.svc[i] = entry; else o.svc.push(entry);
   const data = pickOrder(o); data.rows = o.rows.map(r => ({ id: r.id, text: r.text || '', mat: r.mat || '', h: r.h || '', done: !!r.done }));
   const local = S.orders.find(x => x.id === oid); if (local) local.svc = o.svc;
+  if (S.orderEdit && S.orderEdit.id === oid) S.orderEdit.svc = o.svc;
   S.store.saveOrder(oid, data, S.me).catch((err) => showToast(err && err.code === 'permission-denied' ? 'Nicht gespeichert – der Auftrag ist abgeschlossen' : 'Serviceliste konnte nicht im Auftrag gespeichert werden'));
   draft.svcTs = entry.ts; lsSet(draftKey(S.cat), JSON.stringify(draft));
+  // war diese Liste vorher als freie Liste veröffentlicht → dort entfernen
+  if (S.running.some(x => x.cat === S.cat && String(x.id).startsWith(S.store.myRunningPrefix))) S.store.deleteRunning(S.cat).catch(() => {});
   return { o, entry };
 }
 let svcSyncTimer = null;
-function scheduleSvcSync() { clearTimeout(svcSyncTimer); svcSyncTimer = setTimeout(() => { svcSyncTimer = null; storeDraftInOrder(true); }, 700); }
+function scheduleSvcSync() { clearTimeout(svcSyncTimer); svcSyncTimer = setTimeout(() => { svcSyncTimer = null; storeDraftInOrder(true); }, 400); }
+/* Freie (nicht an einen Auftrag gebundene) Liste dieses Geräts live veröffentlichen bzw. entfernen */
+let runPubTimer = null, runPubCat = null;
+function scheduleRunningPublish() {
+  if (!S.store || !S.store.publishRunning) return;
+  runPubCat = S.cat;
+  clearTimeout(runPubTimer); runPubTimer = setTimeout(publishRunningNow, 600);
+}
+function publishRunningNow() {
+  clearTimeout(runPubTimer); runPubTimer = null;
+  const cat = runPubCat || S.cat; const d = cat === S.cat ? draft : loadDraft(cat);
+  if (d.header && d.header.orderId) return;
+  if (draftHasData(d)) { const { svcTs, ...clean } = d; S.store.publishRunning(cat, { draft: clean, von: S.me || '', fId: (d.header && d.header.fId) || '' }).catch(() => {}); }
+  else if (S.running.some(x => x.cat === cat && String(x.id).startsWith(S.store.myRunningPrefix))) S.store.deleteRunning(cat).catch(() => {});
+}
 function flushSvcSync() { if (svcSyncTimer) { clearTimeout(svcSyncTimer); svcSyncTimer = null; storeDraftInOrder(true); } }
+/* Änderungen anderer Geräte an der gerade offenen Auftrags-Serviceliste übernehmen (live) */
+function applyRemoteSvc() {
+  const oid = draft.header && draft.header.orderId; const o = oid && S.orders.find(x => x.id === oid);
+  const e = o && (o.svc || []).find(x => x.cat === S.cat);
+  if (!e || !(e.ts > (draft.svcTs || 0)) || svcSyncTimer) return;            // eigene Änderung unterwegs → die gewinnt
+  const ae = document.activeElement;
+  const typing = ae && (ae.isContentEditable || ae.tagName === 'TEXTAREA' || (ae.tagName === 'INPUT' && !/^(checkbox|radio|button)$/i.test(ae.type)));
+  if (typing && ($('groups-container').contains(ae) || $('cards').contains(ae))) { S.svcRemotePending = true; return; }   // nur beim Schreiben warten
+  S.svcRemotePending = false;
+  draft = { ...emptyDraft(), ...JSON.parse(JSON.stringify(e.draft)), svcTs: e.ts };
+  lsSet(draftKey(S.cat), JSON.stringify(draft));
+  renderFill(); applyHeader(draft.header); renderMonteure(); renderOrderLink();
+  if (e.von && e.von !== S.me) showLiveHint(`aktualisiert von ${e.von}`);
+}
+let liveHintTimer = null;
+function showLiveHint(t) {
+  const el = $('order-link'); if (!el) return;
+  let h = el.querySelector('.live-hint'); if (!h) { h = document.createElement('span'); h.className = 'live-hint'; el.appendChild(h); }
+  h.textContent = '● ' + t; h.classList.add('on'); clearTimeout(liveHintTimer); liveHintTimer = setTimeout(() => h.classList.remove('on'), 4000);
+}
+
+/* ---------- Live-Übersicht: alle laufenden Servicelisten mit Fortschritt ---------- */
+function draftProgress(cat, d) {
+  const p = buildProtocolFrom(cat, d); let total = 0, done = 0, open = 0;
+  (p.groups || []).forEach(g => g.items.forEach(i => { total++; if (i.io || i.nio || i.beh) done++; if (i.nio && !i.beh) open++; }));
+  return { total, done, open, pct: total ? Math.round(done / total * 100) : 0 };
+}
+const agoText = (ts) => { const m = Math.round((Date.now() - (ts || 0)) / 60000);
+  return m < 1 ? 'gerade eben' : m < 60 ? `vor ${m} Min.` : m < 1440 ? `vor ${Math.round(m / 60)} Std.` : new Date(ts).toLocaleDateString('de-DE'); };
+function liveEntries() {
+  const out = [];
+  S.orders.filter(o => o.status !== 'fertig').forEach(o => (o.svc || []).forEach((x, i) => out.push({ kind: 'order', key: 'o:' + o.id + ':' + x.cat, cat: x.cat, draft: x.draft, von: x.von, ts: x.ts, oid: o.id, nr: o.nr, idx: i })));
+  S.running.forEach(r => out.push({ kind: 'run', key: 'r:' + r.id, id: r.id, cat: r.cat, draft: r.draft || {}, von: r.von, ts: r.ts, mine: String(r.id).startsWith(S.store.myRunningPrefix) }));
+  return out.sort((x, y) => (y.ts || 0) - (x.ts || 0));
+}
+function renderLive() {
+  const box = $('view-live'); if (!box) return;
+  const list = liveEntries();
+  box.innerHTML = list.length ? `<p class="proto-meta no-print">Alle Servicelisten, die gerade bearbeitet werden – von allen Geräten, aktualisiert sich von selbst.</p>
+    <div class="live-list">${list.map(e => { const pr = draftProgress(e.cat, e.draft), h = (e.draft && e.draft.header) || {}; return `
+      <button type="button" class="live-card" data-act="live-open" data-key="${esc(e.key)}">
+        <div class="live-top"><b>${esc(h.fId || 'ohne Fahrzeug')}</b><span class="badge cat">${esc(e.cat)}</span>
+          ${e.kind === 'order' ? `<span class="badge pend">Auftrag ${esc(e.nr)}</span>` : ''}${e.mine ? '<span class="badge ok">dieses Gerät</span>' : ''}</div>
+        <div class="live-bar" role="progressbar" aria-valuenow="${pr.pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pr.pct}%"></span></div>
+        <div class="live-meta"><span><b>${pr.done}/${pr.total}</b> geprüft (${pr.pct} %)</span>${pr.open ? `<span class="badge bad">${pr.open} n.i.O.</span>` : ''}
+          <span>${esc(e.von || '?')} · ${esc(agoText(e.ts))}</span></div>
+      </button>`; }).join('')}</div>`
+    : '<div class="empty-note">Gerade wird keine Serviceliste bearbeitet.</div>';
+}
+function openLiveEntry(key) {
+  const e = liveEntries().find(x => x.key === key); if (!e) return;
+  if (e.kind === 'order') { openOrder(e.oid); if (S.orderEdit && S.orderEdit.id === e.oid) openOrderSvc(e.idx); return; }
+  if (e.mine) { openOrderDraft(e.cat); return; }
+  S.liveId = e.id; S.view = 'liveview'; render(); window.scrollTo(0, 0);
+}
+/* Fremde freie Liste live ansehen (nur lesen) */
+function renderLiveView() {
+  const r = S.running.find(x => x.id === S.liveId), box = $('view-live');
+  if (!r) { box.innerHTML = '<div class="empty-note">Diese Liste wurde inzwischen abgeschlossen oder verworfen.<br><button class="btn-sec" data-act="live-back" type="button">← Laufende Listen</button></div>'; return; }
+  const p = buildProtocolFrom(r.cat, r.draft || {}), h = p.header || {}, pr = draftProgress(r.cat, r.draft || {});
+  const mark = (v, cls) => `<span class="lv-chk ${v ? 'on ' + cls : ''}">${v ? '✓' : ''}</span>`;
+  box.innerHTML = `<div class="proto-banner no-print"><div><b>${esc(h.fId || 'ohne Fahrzeug')}</b> · ${esc(r.cat)} · wird bearbeitet von ${esc(monteurLabel(r.von || '?'))} · <span class="live-dot">● live</span> ${esc(agoText(r.ts))}</div>
+      <div class="actions">${amAdmin() ? '<button class="btn-sec btn-danger" data-act="live-remove" type="button" title="Liste wird nicht mehr bearbeitet">Aus Übersicht entfernen</button>' : ''}<button class="btn-sec" data-act="live-back" type="button">← Laufende Listen</button></div></div>
+    <div class="live-bar big"><span style="width:${pr.pct}%"></span></div>
+    <p class="proto-meta">${pr.done} von ${pr.total} Punkten geprüft (${pr.pct} %)${pr.open ? ` · <b style="color:#b42318">${pr.open} n.i.O. offen</b>` : ''} · Km ${esc(h.fKm || '–')} · Datum ${esc(fmtDay(h.fDate) || '–')}</p>
+    ${(p.groups || []).map(g => `<div class="box"><div class="sec-title"><div class="title-left"><span>${esc(g.title)}</span></div></div>${g.items.length ? `
+      <table class="service-table st-proto"><thead><tr><th class="col-desc">Prüfpunkt</th><th class="col-note">Bemerkung</th><th class="col-status">i.O.</th><th class="col-status">n.i.O.</th><th class="col-status">behoben</th></tr></thead>
+      <tbody>${g.items.map(i => `<tr><td class="item-text">${esc(i.text)}</td><td class="note-view">${esc(i.note)}</td><td class="center">${mark(i.io, 'io')}</td><td class="center">${mark(i.nio, 'nio')}</td><td class="center">${mark(i.beh, 'beh')}</td></tr>`).join('')}</tbody></table>` : ''}</div>`).join('')}`;
+}
+
 /* „✓ Zum Auftrag hinzufügen“: speichern und zurück in den Auftrag */
 async function saveDraftToOrder() {
   clearTimeout(svcSyncTimer); svcSyncTimer = null;
@@ -1630,6 +1729,7 @@ function openOrderDraft(cat) {
   S.cat = cat; lsSet('kds_cat', cat); draft = loadDraft(cat);
   S.view = 'list'; render(); window.scrollTo(0, 0);
 }
+document.addEventListener('focusout', () => setTimeout(() => { if (S.svcRemotePending && S.view === 'list') applyRemoteSvc(); }, 50));
 /* Hinweis über der Serviceliste, wenn sie zu einem Auftrag gehört */
 function renderOrderLink() {
   const el = $('order-link'); if (!el) return;
@@ -2384,6 +2484,8 @@ function render() {
     if (S.edit) renderEdit();
     else { renderFill(); applyHeader(draft.header); renderMonteure(); }
   } else if (S.view === 'archive') renderArchive();
+  else if (S.view === 'live') renderLive();
+  else if (S.view === 'liveview') renderLiveView();
   else if (S.view === 'protocol') renderProtocol();
   else if (S.view === 'fleet') renderFleet();
   else if (S.view === 'vehicle') renderAkte();
@@ -3491,6 +3593,11 @@ const actions = {
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
   'order-add-service': () => addServiceToOrder(),
+  'live-open': (btn) => openLiveEntry(btn.dataset.key),
+  'live-back': () => { S.view = 'live'; S.liveId = null; render(); },
+  'live-remove': async () => { if (!amAdmin() || !S.liveId) return;
+    if (!(await confirmModal('Diese Liste aus der Übersicht entfernen? Auf dem Gerät, auf dem sie ausgefüllt wird, bleibt sie erhalten.', 'Entfernen'))) return;
+    S.store.deleteRunningById(S.liveId).catch(() => showToast('Entfernen fehlgeschlagen')); S.view = 'live'; S.liveId = null; render(); },
   'order-svc-open': (btn) => openOrderSvc(+btn.dataset.idx),
   'order-svc-del': async (btn) => { const o = S.orderEdit; const x = o && o.svc[+btn.dataset.idx]; if (!x || orderLocked(o)) return;
     if (!(await confirmModal(`Serviceliste ${x.cat} aus dem Auftrag entfernen?${x.protoId ? ' Das bereits archivierte Protokoll bleibt im Archiv.' : ''}`, 'Entfernen'))) return;
@@ -3582,6 +3689,7 @@ document.addEventListener('click', (e) => {
     if (S.protoEdit) { leaveProtoEdit().then(ok => { if (ok) nav.click(); }); return; }
     if (nav.dataset.cat) switchCategory(nav.dataset.cat);
     else if (nav.dataset.view === 'archive') { flushTemplateSave(); S.view = 'archive'; render(); window.scrollTo(0, 0); }
+    else if (nav.dataset.view === 'live') { flushTemplateSave(); S.view = 'live'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'fleet') { flushTemplateSave(); flushOrderSave(); S.view = 'fleet'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'orders') { flushTemplateSave(); flushOrderSave(); S.ordersFilter = nav.dataset.ostatus || ''; S.view = 'orders'; render(); window.scrollTo(0, 0); }
     else if (nav.dataset.view === 'stock' || nav.dataset.view === 'reorder') {
@@ -3763,8 +3871,8 @@ let applyingNav = false;      // Navigation kommt gerade aus dem Verlauf → nic
 let layerEntries = 0;         // Verlaufseinträge für offene Fenster/Ebenen
 let ignorePops = 0;           // selbst ausgelöste „Zurück“-Schritte (Fenster per Knopf geschlossen)
 
-const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit, of: S.ordersFilter, vehId: S.openVehId || null, tab: S.akteTab });
-const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit, n.view === 'orders' ? n.of || '' : '', n.view === 'vehicle' ? (n.vehId || '') + ':' + (n.tab || '') : ''].join('|');
+const navSnapshot = () => ({ view: S.view, cat: S.cat, openId: S.openId || null, orderId: S.openOrderId || null, artId: S.openArticleId || null, edit: !!S.edit, of: S.ordersFilter, vehId: S.openVehId || null, tab: S.akteTab, liveId: S.liveId || null });
+const navKey = (n) => [n.view, n.cat, n.openId, n.orderId, n.artId, n.edit, n.view === 'orders' ? n.of || '' : '', n.view === 'vehicle' ? (n.vehId || '') + ':' + (n.tab || '') : '', n.view === 'liveview' ? n.liveId || '' : ''].join('|');
 
 /* Nach jedem Zeichnen: hat sich die Seite geändert, einen neuen Schritt eintragen */
 function syncHistory() {
@@ -3788,6 +3896,7 @@ function applyNav(nav) {
     if (nav.cat && nav.cat !== S.cat) { S.cat = nav.cat; lsSet('kds_cat', nav.cat); draft = loadDraft(nav.cat); }
     S.view = nav.view || 'list';
     if (nav.of !== undefined) S.ordersFilter = nav.of || '';
+    if (S.view === 'liveview') S.liveId = nav.liveId || null;
     if (S.view === 'vehicle') {
       if (nav.vehId && S.vehicles.some(v => v.id === nav.vehId)) { if (akteSubVid !== nav.vehId) subscribeAkte(nav.vehId); S.openVehId = nav.vehId; S.akteTab = nav.tab || 'historie'; }
       else S.view = 'fleet';
@@ -3949,6 +4058,8 @@ async function start() {
   };
   S.store.onLost(() => onLostAccess(false));
   // Offene Verbindungen merken eine Sperre nicht von selbst – daher das Werkstatt-Dokument beobachten
+  S.store.onRunning((l) => { S.running = l; if (S.view === 'live') renderLive(); if (S.view === 'liveview') renderLiveView(); });
+  setInterval(() => { if (S.view === 'live') renderLive(); }, 30000);    // „vor x Min.“ aktuell halten
   S.store.onWorkshop((d) => {
     S.gesperrt = Array.isArray(d.gesperrt) ? d.gesperrt : [];
     if (d.members && S.store.uid && d.members[S.store.uid] === false) onLostAccess(true);
@@ -3987,6 +4098,8 @@ async function start() {
   S.store.onOrders((list) => {
     S.ordersError = false;
     S.orders = list;
+    if (S.view === 'list' && !S.edit && draft.header && draft.header.orderId) applyRemoteSvc();
+    if (S.view === 'live') renderLive();
     renderNav();
     if (S.view === 'orders') renderOrders();
     if (S.view === 'order' && S.openOrderId) {

@@ -226,6 +226,16 @@ await t('Mitarbeiter liest Datei-Stücke', assertSucceeds(getDocs(collection(keA
 await t('Ersteller löscht eigene Datei samt Stücken', assertSucceeds((async () => { const b = writeBatch(brA); b.delete(ak(brA, 'dateien', 'f1', 'teile', '0000')); b.delete(ak(brA, 'dateien', 'f1')); await b.commit(); })()));
 await t('Fremder liest keine Akte', assertFails(getDoc(ak(env.authenticatedContext('fremdX').firestore()))));
 
+// ---------- Laufende Servicelisten ----------
+const lf = (db, id) => doc(db, 'workshops', W5, 'laufend', id);
+await t('Gerät veröffentlicht eigene laufende Liste', assertSucceeds(setDoc(lf(brA, 'br_Kran'), { uid: 'br', cat: 'Kran', draft: {}, ts: 1 })));
+await t('Fremde Kennung abgelehnt', assertFails(setDoc(lf(brA, 'se_Kran'), { uid: 'br', cat: 'Kran' })));
+await t('Fremde uid im Inhalt abgelehnt', assertFails(setDoc(lf(brA, 'br_LKW'), { uid: 'se', cat: 'LKW' })));
+await t('Andere Mitglieder lesen live mit', assertSucceeds(getDoc(lf(keA, 'br_Kran'))));
+await t('Anderer Mitarbeiter löscht fremde Liste NICHT', assertFails(deleteDoc(lf(keA, 'br_Kran'))));
+await t('Admin räumt fremde Liste auf', assertSucceeds(deleteDoc(lf(seA, 'br_Kran'))));
+await t('Fremder liest keine laufenden Listen', assertFails(getDoc(lf(env.authenticatedContext('fremdY').firestore(), 'br_Kran'))));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

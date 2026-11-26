@@ -391,6 +391,15 @@ export function createCloudStore(cfg) {
       const q = query(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'), orderBy('ts', 'desc'), limit(100));
       return onSnapshot(q, (qs) => { const l = []; qs.forEach(d => l.push({ ...d.data(), id: d.id })); cb(l); }, (err) => console.error(err));
     },
+    /* Laufende (noch nicht abgeschlossene) Servicelisten aller Geräte – für die Live-Übersicht */
+    onRunning(cb) {
+      return onSnapshot(sub('laufend'), (qs) => { const l = []; qs.forEach(d => l.push({ ...d.data(), id: d.id })); cb(l); }, (err) => { console.error(err); cb([]); });
+    },
+    publishRunning(cat, data) { return track(setDoc(doc(db, 'workshops', wid, 'laufend', uid + '_' + cat), { ...data, cat, uid, ts: Date.now() })); },
+    deleteRunningById(id) { return track(deleteDoc(doc(db, 'workshops', wid, 'laufend', id))); },
+    deleteRunning(cat) { return track(deleteDoc(doc(db, 'workshops', wid, 'laufend', uid + '_' + cat))); },
+    get myRunningPrefix() { return uid + '_'; },
+
     onLagerCfg(cb) {
       return onSnapshot(doc(db, 'workshops', wid, 'einstellungen', 'lager'), (d) => cb(d.exists() ? d.data() : {}), (err) => console.error(err));
     },

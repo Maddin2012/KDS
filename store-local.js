@@ -146,6 +146,11 @@ export function createLocalStore() {
       return neu;
     },
     onBookings(aid, cb) { const x = { aid, cb }; bookSubs.add(x); cb(read(K_BOOK, {})[aid] || []); return () => bookSubs.delete(x); },
+    onRunning(cb) { this._runSubs = this._runSubs || new Set(); this._runSubs.add(cb); cb(read('kds_local_running', [])); return () => this._runSubs.delete(cb); },
+    async publishRunning(cat, data) { const l = read('kds_local_running', []).filter(x => x.cat !== cat); l.push({ ...data, cat, uid: 'local', id: 'local_' + cat, ts: Date.now() }); write('kds_local_running', l); (this._runSubs || []).forEach(f => f(l)); },
+    async deleteRunningById(id) { return this.deleteRunning(String(id).replace(/^local_/, '')); },
+    async deleteRunning(cat) { const l = read('kds_local_running', []).filter(x => x.cat !== cat); write('kds_local_running', l); (this._runSubs || []).forEach(f => f(l)); },
+    myRunningPrefix: 'local_',
     onLagerCfg(cb) { cfgSubs.add(cb); cb(read(K_LCFG, {})); return () => cfgSubs.delete(cb); },
     async saveLagerCfg(data) { write(K_LCFG, { ...read(K_LCFG, {}), ...data }); cfgSubs.forEach(cb => cb(read(K_LCFG, {}))); },
 

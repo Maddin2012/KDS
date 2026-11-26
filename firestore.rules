@@ -243,6 +243,15 @@ service cloud.firestore {
         }
       }
 
+      // Laufende Servicelisten (Live-Übersicht): jedes Gerät schreibt nur seine eigenen
+      // (Kennung „<uid>_<Kategorie>“); lesen alle Mitglieder; löschen Ersteller oder Admins.
+      match /laufend/{rid} {
+        allow read: if isMember(wid);
+        allow create, update: if isMember(wid) && request.resource.data.uid == request.auth.uid
+          && rid.matches(request.auth.uid + '_.+');
+        allow delete: if isMember(wid) && (rid.matches(request.auth.uid + '_.+') || isAdmin(wid));
+      }
+
       // Zähler für fortlaufende Auftragsnummern: nur um genau 1 hochzählen.
       match /zaehler/{key} {
         allow read: if isMember(wid);
