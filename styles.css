@@ -1184,3 +1184,4 @@
     .sp-box { display:inline-block; width:11px; height:11px; border:1px solid #333; line-height:10px; font-size:10px; font-weight:700 }
     .sp-crew { margin-top:8px; font-size:11px } .sp-crew label { font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; font-size:9px; color:#8a6a3d; font-weight:700; margin-right:6px }
   }
+  #confirm-modal-message { white-space:pre-line }

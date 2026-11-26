@@ -1555,6 +1555,25 @@ async function saveDraftToOrder() {
   openOrder(oid);
   showToast(`Serviceliste ${r.entry.cat} zum Auftrag ${r.o.nr} hinzugefügt`);
 }
+/* Nach dem Abschließen: offene Mängel (n.i.O. und nicht behoben) der Servicelisten → Folgeauftrag anbieten */
+async function offerFollowUpOrder(o) {
+  if (!o || !o.svc.length) return;
+  const rows = [], cats = [];
+  o.svc.forEach(x => {
+    const p = buildProtocolFrom(x.cat, x.draft, x.von); let n = 0;
+    (p.groups || []).forEach(g => g.items.forEach(i => {
+      if (i.nio && !i.beh) { n++; rows.push({ ...emptyOrderRow(), text: `${g.title}: ${i.text}${i.note ? ' – ' + i.note : ''}` }); }
+    }));
+    if (n) cats.push(x.cat);
+  });
+  if (!rows.length) return;
+  const list = rows.slice(0, 6).map(r => '• ' + r.text).join('\n') + (rows.length > 6 ? `\n… und ${rows.length - 6} weitere` : '');
+  if (!(await confirmModal(`In der Serviceliste ${cats.join(', ')} ${rows.length === 1 ? 'ist 1 Punkt' : `sind ${rows.length} Punkte`} „n.i.O.“ und nicht behoben:\n\n${list}\n\nNeuen Auftrag für ${rows.length === 1 ? 'diesen Punkt' : 'diese Punkte'} anlegen?`, 'Auftrag anlegen', false))) return;
+  flushOrderSave();                       // Abschluss des bisherigen Auftrags zuerst speichern
+  const src = o.svc.find(x => x.protoId);
+  openNewOrder({ rows, vehId: o.vehId || '', freeName: o.vehId ? '' : (o.fahrzeug || o.code || ''), km: o.km, ow: o.ow, uw: o.uw,
+    notes: `Offene Mängel aus Serviceliste ${cats.join(', ')} von Auftrag ${o.nr}.`, source: src ? src.protoId : '' });
+}
 /* Beim Abschließen des Auftrags: Servicelisten ins Archiv (→ auch in die Historie des Fahrzeugs) */
 async function archiveOrderServices(o) {
   if (!o || !o.svc.length) return;
@@ -1641,7 +1660,7 @@ function onOrderInput(t) {
     if (f === 'h') $('o-sum').textContent = fmtHours(orderHours(o));
   } else {
     o[f] = t.value;
-    if (f === 'status') { renderOrder(); if (t.value === 'fertig') archiveOrderServices(o); }
+    if (f === 'status') { renderOrder(); if (t.value === 'fertig') archiveOrderServices(o).then(() => offerFollowUpOrder(o)); }
   }
   if (f !== 'status') reopenIfIncomplete();
   if (t.tagName === 'TEXTAREA') autoSize(t);
