@@ -1940,15 +1940,15 @@ function openNewOrder(pre = {}) {
   const norm = (s) => String(s || '').toLowerCase().replace(/[\s-]+/g, '');
   const draw = () => {
     const q = $('no-q').value.trim(), nq = norm(q);
-    const sel = vehicles.find(v => v.id === selId);
+    const sel = S.vehicles.find(v => v.id === selId);
     $('no-sel').innerHTML = sel ? `<div class="no-chosen"><span>✓ <b>${esc(vehicleLabel(sel))}</b><small>${esc([sel.kz, sel.gruppe, sel.fahrer].filter(Boolean).join(' · '))}</small></span>
         <button type="button" class="link-btn" data-n="unsel">ändern</button></div>`
       : (() => { if (!q) return '';
-          const ex = vehicles.filter(x => norm(x.code) === nq || norm(x.kz) === nq);
+          const ex = S.vehicles.filter(x => norm(x.code) === nq || norm(x.kz) === nq);
           if (ex.length === 1) return `<div class="no-free-hint ok">„<b>${esc(q)}</b>“ = <b>${esc(vehicleLabel(ex[0]))}</b> – antippen oder direkt „Auftrag anlegen“.</div>`;
           return `<div class="no-free-hint">Fahrzeug aus der Liste antippen – ohne Auswahl wird „<b>${esc(q)}</b>“ als freies Fahrzeug eingetragen.</div>`; })();
     if (sel && !q) { $('no-list').innerHTML = ''; return; }
-    const hits = vehicles.filter(v => !nq || [v.code, v.kz, v.typ, v.hersteller, v.fahrer, v.gruppe, v.werk].some(f => norm(f).includes(nq)));
+    const hits = sortVehicles(S.vehicles).filter(v => !nq || [v.code, v.kz, v.typ, v.hersteller, v.fahrer, v.gruppe, v.werk].some(f => norm(f).includes(nq)));
     // genaue ID-Treffer zuerst
     hits.sort((x, y) => (norm(y.code) === nq) - (norm(x.code) === nq));
     $('no-list').innerHTML = hits.slice(0, 40).map(v => `<button type="button" class="osp-item${v.id === selId ? ' on' : ''}" data-vid="${esc(v.id)}">
@@ -1971,7 +1971,7 @@ function openNewOrder(pre = {}) {
     const v = S.vehicles.find(x => x.id === selId);
     let free = $('no-q').value.trim();
     // Eingabe passt genau zu einer ID bzw. einem Kennzeichen → dieses Fahrzeug nehmen
-    const exact = !v && free ? vehicles.filter(x => norm(x.code) === norm(free) || norm(x.kz) === norm(free)) : [];
+    const exact = !v && free ? sortVehicles(S.vehicles).filter(x => norm(x.code) === norm(free) || norm(x.kz) === norm(free)) : [];   // aktueller Fuhrpark
     const vv = v || (exact.length === 1 ? exact[0] : null);
     if (vv) free = '';
     if (!vv && !free) { $('no-err').textContent = 'Bitte ein Fahrzeug suchen und antippen oder einen Namen eintragen.'; $('no-q').focus(); return; }
