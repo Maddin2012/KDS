@@ -1259,6 +1259,12 @@ function renderOrder() {
     </div>
 
     <div class="box">
+      <div class="sec-title"><div class="title-left"><span>Anhänge</span></div>
+        <button class="btn-sec no-print" data-act="order-attach" type="button">📎 Datei / Foto / Video anhängen</button></div>
+      <div id="o-files"></div>
+    </div>
+
+    <div class="box">
       <div class="sec-title"><div class="title-left"><span>Bemerkungen / Mängel</span></div></div>
       <textarea class="o-ta o-notes" data-f="notes" rows="3" placeholder="Auffälligkeiten, offene Punkte, Folgeauftrag …">${esc(o.notes)}</textarea>
     </div>
@@ -1277,6 +1283,7 @@ function renderOrder() {
   renderOrderCrew();
   renderOrderStock();
   renderOrderService();
+  subscribeOrderFiles(o.id); renderOrderFiles();
   if (locked) lockOrderView();
   renderChrome();                       // erst sichtbar machen, dann Höhen berechnen
   sizeOrderTextareas();
@@ -1286,7 +1293,7 @@ function lockOrderView() {
   const v = $('view-order');
   v.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
   v.querySelectorAll('.o-drag').forEach(el => el.classList.add('hidden'));
-  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"], [data-act="order-svc-del"]').forEach(el => el.classList.add('hidden'));
+  v.querySelectorAll('[data-act="order-add-row"], [data-act="order-del-row"], [data-act="order-stock-add"], [data-act="order-stock-del"], [data-act="order-stock-row"], [data-act="order-add-service"], [data-act="order-svc-del"], [data-act="order-attach"]').forEach(el => el.classList.add('hidden'));
   v.querySelectorAll('[data-act="order-vehicle"], [data-act="order-crew"]').forEach(el => { el.disabled = true; });
 }
 /* Admin ändert einen abgeschlossenen Auftrag und es ist nicht mehr alles erledigt → wieder „Offen“ */
@@ -1473,6 +1480,93 @@ async function removeOrderStock(mid) {
     saveOrderImmediately(); renderOrderStock();
     showToast(art ? 'Zurück ins Lager gebucht' : 'Aus dem Auftrag entfernt');
   } catch (err) { showToast((err && err.message) || 'Rückbuchung fehlgeschlagen'); }
+}
+
+/* ---------- Anhänge am Auftrag (Bilder, Videos, PDF …) ---------- */
+let orderFilesUnsub = null, orderFilesFor = null;
+function subscribeOrderFiles(oid) {
+  if (orderFilesFor === oid) return;
+  closeOrderFiles(); orderFilesFor = oid; S.orderFiles = [];
+  orderFilesUnsub = S.store.onFiles('auftraege', oid, (l) => { S.orderFiles = l; if (S.view === 'order' && S.openOrderId === oid) renderOrderFiles(); });
+}
+function closeOrderFiles() { if (orderFilesUnsub) { try { orderFilesUnsub(); } catch (e) { /* schon beendet */ } } orderFilesUnsub = null; orderFilesFor = null; }
+const fileKind = (f) => (f.type || '').startsWith('image/') ? 'bild' : (f.type || '').startsWith('video/') ? 'video' : 'dok';
+function renderOrderFiles() {
+  const box = $('o-files'), o = S.orderEdit; if (!box || !o) return;
+  const files = S.orderFiles || [], canDel = (f) => !orderLocked(o) && (amAdmin() || f.uid === S.store.uid);
+  const fmtTs = (ts) => new Date(ts || 0).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  const media = files.filter(f => f.kind === 'bild' || f.kind === 'video'), docs = files.filter(f => f.kind !== 'bild' && f.kind !== 'video');
+  const del = (f) => canDel(f) ? `<button class="btn-del-row no-print" data-act="order-file-del" data-id="${esc(f.id)}" title="Löschen">✕</button>` : '';
+  box.innerHTML = (S.orderUpload ? `<p class="ak-up">${esc(S.orderUpload)}</p>` : '')
+    + (media.length ? `<div class="ak-gal">${media.map(f => `<figure class="ak-img${f.kind === 'video' ? ' is-video' : ''}">
+        <button type="button" data-act="order-file-view" data-id="${esc(f.id)}" title="${esc(f.name)}">${f.thumb ? `<img src="${f.thumb}" alt="${esc(f.name)}" loading="lazy">` : `<span class="ak-ext">${f.kind === 'video' ? 'VIDEO' : 'BILD'}</span>`}
+          ${f.kind === 'video' ? '<span class="vid-badge">▶</span>' : ''}</button>
+        <figcaption><span>${esc(fmtTs(f.ts))} · ${esc(f.von || '')}${f.kind === 'video' ? ' · ' + esc(fmtSize(f.size)) : ''}</span>${del(f)}</figcaption></figure>`).join('')}</div>` : '')
+    + (docs.length ? `<div class="ak-files" style="margin-top:${media.length ? 10 : 0}px">${docs.map(f => `<div class="ak-file">
+        <button type="button" class="ak-file-b" data-act="order-file-view" data-id="${esc(f.id)}"><span class="ak-ext">${esc((f.name.split('.').pop() || 'DATEI').slice(0, 4).toUpperCase())}</span>
+          <span><b>${esc(f.name)}</b><small>${esc(fmtSize(f.size))} · ${esc(fmtTs(f.ts))} · ${esc(f.von || '')}</small></span></button>${del(f)}</div>`).join('')}</div>` : '')
+    + (!files.length && !S.orderUpload ? '<p class="proto-meta">Noch keine Anhänge. Fotos und Videos am Handy direkt mit der Kamera aufnehmen; PDF, Word, Excel bis 15 MB, Videos bis 60 MB.</p>' : '');
+}
+/* Vorschaubild aus einem Video (erstes Bild nach ca. 0,5 s) */
+function videoThumb(file) {
+  return new Promise((res) => {
+    const u = URL.createObjectURL(file), v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.src = u;
+    const done = (x) => { URL.revokeObjectURL(u); res(x); };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch (e) { done(''); } };
+    v.onseeked = () => { try { const k = Math.min(1, 320 / (v.videoWidth || 320)), c = document.createElement('canvas'); c.width = Math.round((v.videoWidth || 320) * k); c.height = Math.round((v.videoHeight || 180) * k);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); done(c.toDataURL('image/jpeg', 0.7)); } catch (e) { done(''); } };
+    v.onerror = () => done(''); setTimeout(() => done(''), 8000);
+  });
+}
+async function uploadOrderFiles(files) {
+  const o = S.orderEdit; if (!o || orderLocked(o)) return;
+  const oid = o.id; let done = 0;
+  for (const file of files) {
+    try {
+      S.orderUpload = `Lade hoch: ${file.name} …`; renderOrderFiles();
+      let meta, b64;
+      if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+        const im = await loadImg(file); const full = scaleImg(im, 1600, 0.82);
+        b64 = full.split(',')[1];
+        meta = { kind: 'bild', name: file.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg', size: Math.round(b64.length * 0.75), thumb: scaleImg(im, 320, 0.7) };
+      } else if (file.type.startsWith('video/')) {
+        if (file.size > 60 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 60 MB – bitte kürzeres Video aufnehmen`);
+        const thumb = await videoThumb(file);
+        b64 = bufToB64(await file.arrayBuffer());
+        meta = { kind: 'video', name: file.name, type: file.type, size: file.size, thumb };
+      } else {
+        if (file.size > 15 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 15 MB`);
+        b64 = bufToB64(await file.arrayBuffer());
+        meta = { kind: 'dok', name: file.name, type: file.type || 'application/octet-stream', size: file.size };
+      }
+      await S.store.addFile('auftraege', oid, meta, b64, S.me, (p) => { S.orderUpload = `Lade hoch: ${file.name} … ${Math.round(p * 100)} %`; const el = $('o-files') && $('o-files').querySelector('.ak-up'); if (el) el.textContent = S.orderUpload; });
+      done++;
+    } catch (e) { showToast(e.message || 'Hochladen fehlgeschlagen'); }
+  }
+  S.orderUpload = ''; if (S.view === 'order') renderOrderFiles();
+  if (done) showToast(done === 1 ? 'Anhang gespeichert' : done + ' Anhänge gespeichert');
+}
+async function viewStoredFile(coll, pid, f) {
+  showToast('Wird geladen …');
+  try {
+    const b64 = await S.store.getFile(coll, pid, f.id);
+    const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([u], { type: f.type || 'application/octet-stream' }));
+    const k = f.kind === 'video' || (f.type || '').startsWith('video/') ? 'video' : (f.kind === 'bild' || (f.type || '').startsWith('image/')) ? 'bild' : 'dok';
+    if (k !== 'dok') {
+      const ov = $('setup');
+      ov.innerHTML = `<div class="setup-card ak-lb">${k === 'video' ? `<video src="${url}" controls playsinline autoplay></video>` : `<img src="${url}" alt="${esc(f.name)}">`}
+        <div class="setup-back" style="display:flex;justify-content:space-between;gap:10px"><a class="link-btn" href="${url}" download="${esc(f.name)}">Herunterladen</a>
+        <button class="link-btn" data-v="close" type="button">Schließen</button></div></div>`;
+      ov.classList.remove('hidden');
+      ov.onclick = (e) => { if (e.target === ov || e.target.closest('[data-v="close"]')) { const v = ov.querySelector('video'); if (v) v.pause(); ov.classList.add('hidden'); ov.onclick = null; URL.revokeObjectURL(url); } };
+    } else {
+      const a = document.createElement('a'); a.href = url; a.download = f.name;
+      if ((f.type || '') === 'application/pdf') { a.target = '_blank'; a.removeAttribute('download'); }
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  } catch (e) { showToast(e.message || 'Datei konnte nicht geladen werden'); }
 }
 
 /* ---------- Serviceliste zum Auftrag ---------- */
@@ -2478,6 +2572,7 @@ function cleanTemplate(tpl) {
 
 /* ---------- Ansicht wechseln ---------- */
 function render() {
+  if (S.view !== 'order' && orderFilesFor) closeOrderFiles();
   if (S.fleetEdit && (S.view !== 'fleet' || !amAdmin())) { flushFleetEdit(); S.fleetEdit = false; }
   if (S.view === 'reorder' && !amAdmin()) S.view = 'stock';   // Bestellvorschläge nur für SE/KÖ
   if (S.view === 'list') {
@@ -3593,6 +3688,11 @@ const actions = {
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
   'order-add-service': () => addServiceToOrder(),
+  'order-attach': () => { if (orderLocked(S.orderEdit)) return; const i = $('order-file'); i.value = ''; i.click(); },
+  'order-file-view': (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (f && S.orderEdit) viewStoredFile('auftraege', S.orderEdit.id, f); },
+  'order-file-del': async (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (!f || !S.orderEdit) return;
+    if (!(await confirmModal(`Anhang „${f.name}“ löschen?`, 'Löschen'))) return;
+    try { await S.store.deleteFile('auftraege', S.orderEdit.id, f.id); showToast('Anhang gelöscht'); } catch (e) { showToast(e.message || 'Löschen fehlgeschlagen'); } },
   'live-open': (btn) => openLiveEntry(btn.dataset.key),
   'live-back': () => { S.view = 'live'; S.liveId = null; render(); },
   'live-remove': async () => { if (!amAdmin() || !S.liveId) return;
@@ -3732,6 +3832,7 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('order-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadOrderFiles(fs); });
 $('akte-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadAkteFiles(fs); });
 $('view-vehicle').addEventListener('input', (e) => { if (e.target.classList.contains('ak-in')) onAkteInput(e.target); else if (e.target.id === 'ak-note') autoSize(e.target); });
 $('view-vehicle').addEventListener('focusout', (e) => { if (e.target.classList.contains('ak-in')) flushAkteSave(); });
@@ -4161,7 +4262,7 @@ function busyForReload() {
   const overlayOpen = !$('setup').classList.contains('hidden') || $('confirm-modal-overlay').classList.contains('show');
   const a = document.activeElement;
   const typing = a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-  return S.edit || S.protoEdit || S.artDirty || S.fleetEdit || S.akteDirty || !!S.akteUpload || overlayOpen || typing || !!touchDrag;
+  return S.edit || S.protoEdit || S.artDirty || S.fleetEdit || S.akteDirty || !!S.akteUpload || !!S.orderUpload || overlayOpen || typing || !!touchDrag;
 }
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.KDS_NO_SW) {

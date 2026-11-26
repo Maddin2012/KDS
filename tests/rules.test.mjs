@@ -236,6 +236,19 @@ await t('Anderer Mitarbeiter löscht fremde Liste NICHT', assertFails(deleteDoc(
 await t('Admin räumt fremde Liste auf', assertSucceeds(deleteDoc(lf(seA, 'br_Kran'))));
 await t('Fremder liest keine laufenden Listen', assertFails(getDoc(lf(env.authenticatedContext('fremdY').firestore(), 'br_Kran'))));
 
+// ---------- Anhänge an Aufträgen ----------
+await env.withSecurityRulesDisabled(async (c) => { const db = c.firestore();
+  await setDoc(doc(db, 'workshops', W5, 'auftraege', 'a1'), { nr: 'X-1', status: 'offen' });
+  await setDoc(doc(db, 'workshops', W5, 'auftraege', 'a2'), { nr: 'X-2', status: 'fertig' }); });
+const ad = (db, oid, ...p) => doc(db, 'workshops', W5, 'auftraege', oid, 'dateien', ...p);
+await t('Mitarbeiter lädt Stück zum offenen Auftrag hoch', assertSucceeds(setDoc(ad(brA, 'a1', 'f1', 'teile', '0000'), { data: 'AAAA', n: 0 })));
+await t('Mitarbeiter hängt Datei an offenen Auftrag', assertSucceeds(setDoc(ad(brA, 'a1', 'f1'), { name: 'foto.jpg', kind: 'bild', uid: 'br', ts: 1 })));
+await t('Anderer Mitarbeiter löscht fremden Anhang NICHT', assertFails(deleteDoc(ad(keA, 'a1', 'f1'))));
+await t('Mitarbeiter sieht Anhänge', assertSucceeds(getDocs(collection(keA, 'workshops', W5, 'auftraege', 'a1', 'dateien'))));
+await t('Anhang an abgeschlossenen Auftrag (Mitarbeiter) abgelehnt', assertFails(setDoc(ad(brA, 'a2', 'f2'), { name: 'x.pdf', uid: 'br' })));
+await t('Admin hängt an abgeschlossenen Auftrag an', assertSucceeds(setDoc(ad(seA, 'a2', 'f3'), { name: 'x.pdf', uid: 'se' })));
+await t('Ersteller löscht eigenen Anhang', assertSucceeds((async () => { const b = writeBatch(brA); b.delete(ad(brA, 'a1', 'f1', 'teile', '0000')); b.delete(ad(brA, 'a1', 'f1')); await b.commit(); })()));
+
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
 process.exit(ok === n ? 0 : 1);

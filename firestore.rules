@@ -85,6 +85,12 @@ service cloud.firestore {
         && resource.data.members.get(request.auth.uid, null) == null;
     }
 
+    // Auftrag noch nicht abgeschlossen – oder Admin
+    function orderOpenOrAdmin(wid, oid) {
+      return isAdmin(wid)
+        || get(/databases/$(database)/documents/workshops/$(wid)/auftraege/$(oid)).data.get('status', 'offen') != 'fertig';
+    }
+
     // Gesperrte Kürzel (Feld `gesperrt` im Werkstatt-Dokument)
     function blockedCodes(wid) {
       return get(/databases/$(database)/documents/workshops/$(wid)).data.get('gesperrt', []);
@@ -206,6 +212,25 @@ service cloud.firestore {
         allow update: if isMember(wid) && request.resource.data.nr == resource.data.nr
           && (resource.data.get('status', 'offen') != 'fertig' || isAdmin(wid));
         allow delete: if isAdmin(wid);
+
+        // Anhänge (Bilder, PDF, Videos …): alle Mitglieder hängen an, solange der Auftrag
+        // nicht abgeschlossen ist (danach nur Admins); löschen Admins oder wer angehängt hat.
+        match /dateien/{fid} {
+          allow read: if isMember(wid);
+          allow create: if isMember(wid) && request.resource.data.uid == request.auth.uid
+            && request.resource.data.name is string && orderOpenOrAdmin(wid, oid);
+          allow update: if false;
+          allow delete: if isAdmin(wid) || (isMember(wid) && resource.data.uid == request.auth.uid && orderOpenOrAdmin(wid, oid));
+          match /teile/{n} {
+            allow read: if isMember(wid);
+            allow create: if isMember(wid) && request.resource.data.data is string && request.resource.data.data.size() <= 800000
+              && !exists(/databases/$(database)/documents/workshops/$(wid)/auftraege/$(oid)/dateien/$(fid));
+            allow update: if false;
+            allow delete: if isAdmin(wid) || (isMember(wid)
+              && (!exists(/databases/$(database)/documents/workshops/$(wid)/auftraege/$(oid)/dateien/$(fid))
+                  || get(/databases/$(database)/documents/workshops/$(wid)/auftraege/$(oid)/dateien/$(fid)).data.uid == request.auth.uid));
+          }
+        }
       }
 
       // Fahrzeugakte: Ersatzteile und Ölsorten pflegen Admins; Notizen und Dateien

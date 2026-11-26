@@ -1198,3 +1198,8 @@
   .lv-chk { display:inline-block; width:20px; height:20px; border:1.5px solid var(--line); border-radius:4px; line-height:18px; text-align:center; font-weight:700 }
   .lv-chk.on.io { background:#e3f4ec; border-color:var(--done); color:var(--done) } .lv-chk.on.nio { background:#fdecea; border-color:#b42318; color:#b42318 } .lv-chk.on.beh { background:var(--orange-lt); border-color:var(--orange); color:var(--orange-dk) }
   .live-hint { font-size:12px; color:var(--done); font-weight:700; opacity:0; transition:opacity .3s } .live-hint.on { opacity:1 }
+  /* Anhänge im Auftrag */
+  .ak-img.is-video > button { position:relative }
+  .vid-badge { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:50%; background:rgba(17,18,19,.7); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:18px; padding-left:3px }
+  .ak-lb video { max-width:100%; max-height:78vh; display:block; margin:0 auto; border-radius:6px; background:#000 }

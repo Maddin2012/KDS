@@ -150,6 +150,12 @@ Knopf dann **„✓ Zum Auftrag hinzufügen“**: Die Liste wird im Auftrag gesp
 sichtbar) und lässt sich dort jederzeit wieder öffnen und ergänzen. Wird der **Auftrag
 abgeschlossen**, kommt die Liste automatisch ins Archiv und in die Historie des Fahrzeugs.
 
+**Anhänge am Auftrag.** Im Auftrag unter *Anhänge* **„📎 Datei / Foto / Video anhängen“**: Fotos und
+Videos (am Handy direkt aus der Kamera), PDF, Word, Excel. Bilder werden verkleinert, Videos bis 60 MB,
+andere Dateien bis 15 MB. Antippen zeigt Bilder groß, spielt Videos ab bzw. öffnet die Datei. Anhängen
+dürfen alle, solange der Auftrag nicht abgeschlossen ist; löschen Admins oder wer angehängt hat.
+Speicher: Firestore (1 GB frei) – große Videos zählen voll.
+
 **Material aus dem Werkstattauftrag abbuchen.** Im Auftrag unter *Material aus dem
 Lager* → **„+ Aus Lager entnehmen“** → Artikel suchen und antippen → Menge →
 **Entnehmen**. Das wird als Entnahme mit der Auftragsnummer gebucht (steht so in der

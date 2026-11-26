@@ -464,16 +464,16 @@ export function createCloudStore(cfg) {
       return track(setDoc(doc(collection(db, 'workshops', wid, 'akten', vid, 'notizen')), { text, von: by || '', uid, ts: Date.now() }));
     },
     deleteAkteNote(vid, nid) { return track(deleteDoc(doc(db, 'workshops', wid, 'akten', vid, 'notizen', nid))); },
-    onAkteFiles(vid, cb) {
-      const q = query(collection(db, 'workshops', wid, 'akten', vid, 'dateien'), orderBy('ts', 'desc'), limit(500));
+    /* Dateien in Stücken ablegen (Firestore-Dokumente sind auf 1 MB begrenzt). Die Beschreibung wird
+       zuletzt geschrieben – erst dann erscheint die Datei. coll = 'akten' (Fahrzeugakte) oder 'auftraege'. */
+    onFiles(coll, pid, cb) {
+      const q = query(collection(db, 'workshops', wid, coll, pid, 'dateien'), orderBy('ts', 'desc'), limit(500));
       return onSnapshot(q, { includeMetadataChanges: true }, (qs) => { const l = []; qs.forEach(d => l.push({ ...d.data(), id: d.id, _pending: d.metadata.hasPendingWrites })); cb(l); },
         (err) => { console.error(err); cb([]); });
     },
-    /* Datei in Stücken ablegen (Firestore-Dokumente sind auf 1 MB begrenzt). Die Beschreibung wird
-       zuletzt geschrieben – erst dann erscheint die Datei in der Akte. */
-    async addAkteFile(vid, meta, b64, by, onProgress) {
+    async addFile(coll, pid, meta, b64, by, onProgress) {
       if (!navigator.onLine) throw new Error('Zum Hochladen wird Internet gebraucht.');
-      const fref = doc(collection(db, 'workshops', wid, 'akten', vid, 'dateien'));
+      const fref = doc(collection(db, 'workshops', wid, coll, pid, 'dateien'));
       const SIZE = 700000, n = Math.ceil(b64.length / SIZE) || 1;
       for (let i = 0; i < n; i++) {
         await withTimeout(setDoc(doc(fref, 'teile', String(i).padStart(4, '0')), { data: b64.slice(i * SIZE, (i + 1) * SIZE), n: i }), 60000, 'Hochladen abgebrochen (Verbindung).');
@@ -482,18 +482,22 @@ export function createCloudStore(cfg) {
       await withTimeout(setDoc(fref, { ...meta, chunks: n, von: by || '', uid, ts: Date.now() }), 30000, 'Hochladen abgebrochen (Verbindung).');
       return fref.id;
     },
-    async getAkteFile(vid, fid) {
-      const qs = await getDocs(query(collection(db, 'workshops', wid, 'akten', vid, 'dateien', fid, 'teile'), orderBy('n')));
+    async getFile(coll, pid, fid) {
+      const qs = await getDocs(query(collection(db, 'workshops', wid, coll, pid, 'dateien', fid, 'teile'), orderBy('n')));
       let s = ''; qs.forEach(d => { s += d.data().data; }); return s;
     },
-    async deleteAkteFile(vid, fid) {
+    async deleteFile(coll, pid, fid) {
       if (!navigator.onLine) throw new Error('Zum Löschen wird Internet gebraucht.');
-      const fref = doc(db, 'workshops', wid, 'akten', vid, 'dateien', fid);
+      const fref = doc(db, 'workshops', wid, coll, pid, 'dateien', fid);
       const qs = await getDocs(collection(fref, 'teile'));
       const b = writeBatch(db);
       qs.forEach(d => b.delete(d.ref)); b.delete(fref);
       await withTimeout(b.commit(), 30000, 'Keine Verbindung zur Datenbank.');
     },
+    onAkteFiles(vid, cb) { return this.onFiles('akten', vid, cb); },
+    addAkteFile(vid, meta, b64, by, onProgress) { return this.addFile('akten', vid, meta, b64, by, onProgress); },
+    getAkteFile(vid, fid) { return this.getFile('akten', vid, fid); },
+    deleteAkteFile(vid, fid) { return this.deleteFile('akten', vid, fid); },
 
     /* Ganzen Fuhrpark ersetzen (Excel-Import, nur Admins): alle Fahrzeuge löschen, neue anlegen */
     async replaceFleet(list, by) {

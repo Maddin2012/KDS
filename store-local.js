@@ -207,6 +207,26 @@ export function createLocalStore() {
     async getAkteFile(vid, fid) { return this._akte(vid).data[fid] || ''; },
     async deleteAkteFile(vid, fid) { const d = this._akte(vid); d.files = d.files.filter(f => f.id !== fid); delete d.data[fid]; this._akteSave(vid, d); },
 
+    /* Anhänge an Aufträgen (Probemodus) */
+    _of(oid) { return read('kds_local_ofiles_' + oid, { files: [], data: {} }); },
+    onFiles(coll, pid, cb) {
+      if (coll === 'akten') return this.onAkteFiles(pid, cb);
+      this._ofSubs = this._ofSubs || []; const f = (p) => { if (p === pid) cb(this._of(pid).files.slice().sort((x, y) => y.ts - x.ts)); };
+      this._ofSubs.push(f); f(pid); return () => { this._ofSubs = this._ofSubs.filter(x => x !== f); };
+    },
+    async addFile(coll, pid, meta, b64, by, onProgress) {
+      if (coll === 'akten') return this.addAkteFile(pid, meta, b64, by, onProgress);
+      const d = this._of(pid), id = 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      d.files.push({ ...meta, id, von: by || '', uid: 'local', ts: Date.now() }); d.data[id] = b64;
+      if (!write('kds_local_ofiles_' + pid, d)) throw new Error('Speicher dieses Geräts voll');
+      (this._ofSubs || []).forEach(f => f(pid)); if (onProgress) onProgress(1); return id;
+    },
+    async getFile(coll, pid, fid) { return coll === 'akten' ? this.getAkteFile(pid, fid) : (this._of(pid).data[fid] || ''); },
+    async deleteFile(coll, pid, fid) {
+      if (coll === 'akten') return this.deleteAkteFile(pid, fid);
+      const d = this._of(pid); d.files = d.files.filter(f => f.id !== fid); delete d.data[fid]; write('kds_local_ofiles_' + pid, d); (this._ofSubs || []).forEach(f => f(pid));
+    },
+
     onProtocols(cb) { protoSubs.add(cb); cb(read(K_PROTO, [])); return () => protoSubs.delete(cb); },
 
     async addProtocol(p) {
