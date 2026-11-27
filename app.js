@@ -1574,6 +1574,135 @@ async function viewStoredFile(coll, pid, f) {
   } catch (e) { showToast(e.message || 'Datei konnte nicht geladen werden'); }
 }
 
+/* ---------- Auftrag als PDF senden (WhatsApp, E-Mail …) oder in einen Ordner speichern ---------- */
+let jspdfPromise = null;
+function loadJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve(window.jspdf.jsPDF);
+  const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('PDF-Erzeugung konnte nicht geladen werden (Internet?)')); document.head.appendChild(s); });
+  return jspdfPromise || (jspdfPromise = load('vendor/jspdf/jspdf.umd.min.js').then(() => load('vendor/jspdf/jspdf.plugin.autotable.min.js')).then(() => window.jspdf.jsPDF)
+    .catch(e => { jspdfPromise = null; throw e; }));
+}
+const safeName = (s) => String(s || 'Auftrag').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_');
+async function buildOrderPdf(o) {
+  const JsPDF = await loadJsPDF();
+  const pdf = new JsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 14; let y = 16;
+  const orange = [255, 131, 0], dark = [17, 18, 19], grey = [111, 120, 126];
+  const head = (title, sub) => {
+    pdf.setFillColor(...orange); pdf.rect(M, y - 5, 2, 9, 'F');
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(...dark); pdf.text('KRANDIENST SCHULZ', M + 4, y - 1.5);
+    pdf.setFontSize(16); pdf.text(title, M, y + 9);
+    if (sub) { pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(sub, W - M, y + 9, { align: 'right' }); }
+    pdf.setDrawColor(...orange); pdf.setLineWidth(0.6); pdf.line(M, y + 12, W - M, y + 12); y += 18;
+  };
+  const section = (t) => { if (y > 265) { pdf.addPage(); y = 16; } pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...dark); pdf.text(t.toUpperCase(), M, y); y += 2; };
+  const table = (headRow, body, opts = {}) => {
+    pdf.autoTable({ startY: y, head: headRow ? [headRow] : undefined, body, margin: { left: M, right: M }, theme: 'grid',
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 1.6, lineColor: [226, 230, 232], lineWidth: 0.2, textColor: dark, overflow: 'linebreak' },
+      headStyles: { fillColor: [246, 247, 248], textColor: grey, fontStyle: 'bold', fontSize: 8 }, ...opts });
+    y = pdf.lastAutoTable.finalY + 6;
+  };
+  const v = orderVehicle(o);
+  head('Werkstattauftrag ' + o.nr, ORDER_STATUS[orderSt(o.status)] + (o.datum ? ' · ' + fmtDay(o.datum) : ''));
+  table(null, [
+    ['Fahrzeug', [o.code, o.fahrzeug].filter(Boolean).join(' · ') || '—', 'Kennzeichen', o.kz || '—'],
+    ['Werk-Nr.', o.werk || '—', 'Km-Stand', o.km || '—'],
+    ['Std. OW', o.ow || '—', 'Std. UW', o.uw || '—'],
+  ].concat(v && v.fahrer ? [['Fahrer', v.fahrer, 'Gruppe', v.gruppe || '—']] : []), { theme: 'plain', styles: { fontSize: 9.5, cellPadding: 1.2 },
+    columnStyles: { 0: { textColor: grey, cellWidth: 26 }, 2: { textColor: grey, cellWidth: 26 } } });
+  const rows = o.rows.filter(r => String(r.text || r.mat || '').trim());
+  section('Durchgeführte Arbeiten');
+  table(['Pos', 'Arbeit / Beschreibung', 'Material / Teile', 'Std.', 'Erl.'],
+    rows.length ? rows.map((r, i) => [String(i + 1).padStart(2, '0'), r.text || '', r.mat || '', r.h || '', r.done ? 'X' : '']) : [['', 'Keine Positionen eingetragen', '', '', '']],
+    { columnStyles: { 0: { cellWidth: 11 }, 2: { cellWidth: 55 }, 3: { cellWidth: 13, halign: 'right' }, 4: { cellWidth: 11, halign: 'center' } } });
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text('Summe Arbeitsstunden: ' + fmtHours(orderHours(o)), W - M, y - 3, { align: 'right' }); y += 2;
+  if (o.lager.length) { section('Material aus dem Lager');
+    table(['Art.-Nr.', 'Artikel', 'Menge', 'Entnommen'], o.lager.map(m => [m.sku || '—', m.name, fmtNum(m.menge) + ' ' + (m.einheit || ''), new Date(m.ts || 0).toLocaleDateString('de-DE') + ' · ' + (m.von || '')])); }
+  if (String(o.notes || '').trim()) { section('Bemerkungen / Mängel'); table(null, [[o.notes]], { theme: 'plain' }); }
+  section('Ausführende Mitarbeiter'); table(null, [[o.crew.map(monteurLabel).join(', ') || '—']], { theme: 'plain' });
+  const files = S.orderFiles || [];
+  if (files.length) { section('Anhänge'); table(null, files.map(f => [f.name, fmtSize(f.size), (f.von || '') + ' · ' + new Date(f.ts || 0).toLocaleDateString('de-DE')]), { theme: 'plain', styles: { fontSize: 8.5 } }); }
+  // Servicelisten jeweils ab neuer Seite
+  o.svc.forEach(x => {
+    const p = buildProtocolFrom(x.cat, x.draft, x.von), h = p.header || {};
+    pdf.addPage(); y = 16;
+    head('Serviceliste ' + x.cat, 'zu Auftrag ' + o.nr);
+    table(null, [['ID / Fahrzeug', h.fId || '—', 'Datum', fmtDay(h.fDate) || '—'], ['Km-Stand', h.fKm || '—', 'Std. OW / UW', [h.fOw, h.fUw].filter(Boolean).join(' / ') || '—']],
+      { theme: 'plain', styles: { fontSize: 9.5, cellPadding: 1.2 }, columnStyles: { 0: { textColor: grey, cellWidth: 28 }, 2: { textColor: grey, cellWidth: 28 } } });
+    (p.groups || []).forEach(g => {
+      section(g.title);
+      if (g.items.length) table(['Prüfpunkt / Arbeitsschritt', 'Bemerkung', 'i.O.', 'n.i.O.', 'behoben'], g.items.map(i => [i.text, i.note || '', i.io ? 'X' : '', i.nio ? 'X' : '', i.beh ? 'X' : '']),
+        { styles: { fontSize: 8.5, cellPadding: 1.2 }, columnStyles: { 1: { cellWidth: 50 }, 2: { cellWidth: 11, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 15, halign: 'center' } } });
+      else y += 3;
+    });
+    section('Prüfer / Monteure'); table(null, [[(p.monteure || []).map(monteurLabel).join(', ') || '—']], { theme: 'plain' });
+  });
+  const n = pdf.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...grey);
+    pdf.text(`Auftrag ${o.nr} · Seite ${i} von ${n}`, W - M, 290, { align: 'right' }); pdf.text('erstellt ' + new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }), M, 290); }
+  return new File([pdf.output('blob')], `Auftrag_${safeName(o.nr)}.pdf`, { type: 'application/pdf' });
+}
+async function attachmentFiles(o) {
+  const out = [];
+  for (const f of (S.orderFiles || [])) {
+    const b64 = await S.store.getFile('auftraege', o.id, f.id);
+    const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    out.push(new File([u], f.name, { type: f.type || 'application/octet-stream' }));
+  }
+  return out;
+}
+function downloadFile(file) {
+  const url = URL.createObjectURL(file), a = document.createElement('a');
+  a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+function openOrderShare() {
+  const o = S.orderEdit; if (!o) return;
+  flushOrderSave(); flushSvcSync();
+  const nAtt = (S.orderFiles || []).length;
+  const canShare = !!(navigator.canShare && navigator.share);
+  const canFolder = !!window.showDirectoryPicker;
+  const ov = $('setup');
+  ov.innerHTML = `<div class="setup-card">${cardHead}<h3>📤 Auftrag senden / speichern</h3>
+    <p>Der Auftrag wird als <b>PDF</b> erstellt${o.svc.length ? ` – mit ${o.svc.length === 1 ? 'der Serviceliste' : o.svc.length + ' Servicelisten'}` : ''}.</p>
+    ${nAtt ? `<label class="sh-opt"><input type="checkbox" id="sh-att" checked> Anhänge mitnehmen (${nAtt} ${nAtt === 1 ? 'Datei' : 'Dateien'})</label>` : ''}
+    <div class="set-list" style="margin-top:10px">
+      ${canShare ? '<button class="set-btn" type="button" data-sh="share">📲 Senden <small>WhatsApp, E-Mail, Teams …</small></button>' : ''}
+      <button class="set-btn" type="button" data-sh="save">💾 ${canFolder ? 'In Ordner speichern' : 'Speichern / Herunterladen'} <small>${canFolder ? 'Ordner auf dem Rechner wählen' : 'landet im Download-Ordner'}</small></button>
+    </div>
+    ${canShare ? '' : '<p class="proto-meta" style="margin-top:10px">Senden direkt aus der App geht auf diesem Gerät nicht – Datei speichern und dann im E-Mail-Programm anhängen.</p>'}
+    <p class="setup-err" id="sh-err"></p>
+    <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
+  ov.classList.remove('hidden');
+  const close = () => { ov.classList.add('hidden'); ov.onclick = null; };
+  ov.onclick = async (e) => {
+    if (e.target.closest('[data-n="close"]')) { close(); return; }
+    const b = e.target.closest('[data-sh]'); if (!b) return;
+    const withAtt = $('sh-att') ? $('sh-att').checked : false;
+    ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = true; }); $('sh-err').textContent = 'PDF wird erstellt …';
+    try {
+      const pdf = await buildOrderPdf(o);
+      const files = [pdf, ...(withAtt ? await attachmentFiles(o) : [])];
+      $('sh-err').textContent = '';
+      if (b.dataset.sh === 'share') {
+        let list = files;
+        if (!navigator.canShare({ files: list })) { list = [pdf]; if (withAtt) showToast('Anhänge lassen sich hier nicht mitsenden – nur das PDF'); }
+        try { await navigator.share({ files: list, title: 'Auftrag ' + o.nr, text: `Werkstattauftrag ${o.nr}${o.code ? ' – Fahrzeug ' + o.code : ''}` }); close(); }
+        catch (err) { if (err && err.name === 'AbortError') { close(); return; } throw err; }
+      } else if (window.showDirectoryPicker) {
+        let dir; try { dir = await window.showDirectoryPicker({ id: 'kds-auftraege', mode: 'readwrite' }); } catch (err) { if (err && err.name === 'AbortError') { ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = false; }); return; } throw err; }
+        for (const f of files) { const h = await dir.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f); await w.close(); }
+        close(); showToast(`${files.length === 1 ? 'PDF' : files.length + ' Dateien'} im Ordner „${dir.name}“ gespeichert`);
+      } else {
+        files.forEach((f, i) => setTimeout(() => downloadFile(f), i * 400));
+        close(); showToast(files.length === 1 ? 'PDF wird gespeichert' : files.length + ' Dateien werden gespeichert');
+      }
+    } catch (err) {
+      ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = false; });
+      $('sh-err').textContent = (err && err.message) || 'Das hat nicht geklappt.';
+    }
+  };
+}
+
 /* ---------- Serviceliste zum Auftrag ---------- */
 /* Fahrzeuggruppe (Fuhrpark) → Kategorie der Serviceliste */
 const GROUP_CAT = { krane: 'Kran', ladekrane: 'Ladekran', zugmaschinen: 'LKW', bf3: 'BF3', pkw: 'PKW' };
@@ -3708,6 +3837,7 @@ const actions = {
   'del-supplier': (btn) => { if (!amAdmin()) return; S.artEdit.suppliers.splice(+btn.dataset.idx, 1); renderArticle(); queueArtSave(); },
   'order-stock-add': () => openOrderStockPicker(),
   'order-add-service': () => addServiceToOrder(),
+  'order-share': () => openOrderShare(),
   'order-attach': () => { if (orderLocked(S.orderEdit)) return; const i = $('order-file'); i.value = ''; i.click(); },
   'order-file-view': (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (f && S.orderEdit) viewStoredFile('auftraege', S.orderEdit.id, f); },
   'order-file-del': async (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (!f || !S.orderEdit) return;

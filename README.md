@@ -156,6 +156,12 @@ Knopf dann **„✓ Zum Auftrag hinzufügen“**: Die Liste wird im Auftrag gesp
 sichtbar) und lässt sich dort jederzeit wieder öffnen und ergänzen. Wird der **Auftrag
 abgeschlossen**, kommt die Liste automatisch ins Archiv und in die Historie des Fahrzeugs.
 
+**Senden / Speichern.** Im Auftrag oben **„📤 Senden / Speichern“**: Der Auftrag wird als PDF erstellt
+(mit Servicelisten auf eigenen Seiten), auf Wunsch zusammen mit den Anhängen. **Senden** öffnet das
+Teilen-Menü des Geräts (WhatsApp, E-Mail, Teams …). **In Ordner speichern** lässt am PC (Chrome/Edge)
+einen Ordner wählen und legt die Dateien dort ab; sonst landen sie im Download-Ordner.
+(PDF-Erzeugung: jsPDF + jspdf-autotable, MIT, vendor/jspdf – erst bei Bedarf geladen.)
+
 **Anhänge am Auftrag.** Im Auftrag unter *Anhänge* **„📎 Datei / Foto / Video anhängen“**: Fotos und
 Videos (am Handy direkt aus der Kamera), PDF, Word, Excel. Bilder werden verkleinert, Videos bis 60 MB,
 andere Dateien bis 15 MB. Antippen zeigt Bilder groß, spielt Videos ab bzw. öffnet die Datei. Anhängen
