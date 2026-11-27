@@ -2950,6 +2950,9 @@ function applyTheme() {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 }
 if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+/* Schriftgröße je Gerät (Standard: etwas größer für bessere Lesbarkeit, v. a. am Handy) */
+function uiZoom() { const z = parseFloat(lsGet('kds_zoom', '1.1')); return z > 0.8 && z < 1.6 ? z : 1.1; }
+function applyZoom() { document.documentElement.style.setProperty('--ui-zoom', String(uiZoom())); }
 
 /* ---------- Einstellungen (Zahnrad oben rechts) ---------- */
 function openSettings() {
@@ -3086,6 +3089,11 @@ function openSettings() {
           <button type="button" data-theme-set="auto" class="${t === 'auto' ? 'on' : ''}">Automatisch</button>
         </div>
         <p style="margin:6px 0 0;font-size:12px">„Automatisch“ folgt der Einstellung des Geräts. Gilt nur für dieses Gerät. Gedruckt wird immer hell.</p>
+        <h4 style="margin-top:14px">Schriftgröße</h4>
+        <div class="seg" role="group" aria-label="Schriftgröße">
+          ${[['1', 'Normal'], ['1.1', 'Größer'], ['1.2', 'Groß'], ['1.3', 'Sehr groß']].map(([z, l]) => `<button type="button" data-zoom-set="${z}" class="${String(uiZoom()) === z ? 'on' : ''}">${l}</button>`).join('')}
+        </div>
+        <p style="margin:6px 0 0;font-size:12px">Vergrößert Schrift und Bedienelemente auf diesem Gerät. Der Ausdruck bleibt unverändert.</p>
       </div>
       <div class="set-section">
         <h4>PIN (Admins ${esc(ADMINS.join(', '))})</h4>
@@ -3169,6 +3177,8 @@ function openSettings() {
   ov.onclick = async (e) => {
     const th = e.target.closest('[data-theme-set]');
     if (th) { lsSet('kds_theme', th.dataset.themeSet); applyTheme(); draw(); return; }
+    const zm = e.target.closest('[data-zoom-set]');
+    if (zm) { lsSet('kds_zoom', zm.dataset.zoomSet); applyZoom(); draw(); return; }
     const b = e.target.closest('[data-s]');
     if (!b) return;
     const go = b.dataset.s;

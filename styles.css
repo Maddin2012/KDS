@@ -1220,3 +1220,7 @@
   .oc-pos > span.is-done { color:var(--steel); text-decoration:line-through; text-decoration-color:var(--steel-2) }
   .oc-pos small { color:var(--steel); font-size:14px }
   @media (max-width:760px) { .oc-id { font-size:24px } }
+  /* ---------- Schriftgröße (Einstellungen → Darstellung) ---------- */
+  :root { --ui-zoom: 1.1 }
+  .main, .side-groups, .side-foot, .setup-card, .confirm-box, .scan-card, .toast, #toast { zoom: var(--ui-zoom) }
+  @media print { .main, .side-groups, .side-foot, .setup-card, .confirm-box { zoom: 1 !important } }

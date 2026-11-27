@@ -26,6 +26,9 @@
     var t = localStorage.getItem('kds_theme') || 'auto';
     var d = t === 'dark' || (t === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.dataset.theme = d ? 'dark' : 'light';
+    /* Schriftgröße (Einstellungen → Darstellung), Standard: etwas größer */
+    var z = parseFloat(localStorage.getItem('kds_zoom') || '1.1');
+    document.documentElement.style.setProperty('--ui-zoom', String(z > 0.8 && z < 1.6 ? z : 1.1));
   } catch (e) {}
 </script>
 
