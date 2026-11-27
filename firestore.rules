@@ -210,7 +210,9 @@ service cloud.firestore {
         allow create: if isMember(wid)
           && request.resource.data.nr is string && request.resource.data.nr.size() > 0 && request.resource.data.nr.size() < 80;
         allow update: if isMember(wid) && request.resource.data.nr == resource.data.nr
-          && (resource.data.get('status', 'offen') != 'fertig' || isAdmin(wid));
+          && (resource.data.get('status', 'offen') != 'fertig' || isAdmin(wid))
+          // endgültig abschließen (2/2) nur Admins
+          && (request.resource.data.get('status', 'offen') != 'fertig' || isAdmin(wid));
         allow delete: if isAdmin(wid);
 
         // Anhänge (Bilder, PDF, Videos …): alle Mitglieder hängen an, solange der Auftrag

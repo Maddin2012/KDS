@@ -1115,7 +1115,9 @@ function renderReorder() {
    ===================================================================== */
 const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
   'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager', 'svc'];
-const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', fertig: 'Abgeschlossen' };
+/* Ablauf: Offen (rot) → In Arbeit → Abgeschlossen 1/2 (Bearbeiter, z. B. PE) → Abgeschlossen 2/2 (nur SE/KÖ).
+   Erst die 2. Stufe legt Servicelisten ins Archiv und fragt nach einem Folgeauftrag. */
+const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', erledigt: 'Abgeschlossen 1/2', fertig: 'Abgeschlossen 2/2' };
 const emptyOrderRow = () => ({ id: newId(), text: '', mat: '', h: '', done: false });
 const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
 const fmtHours = (n) => n.toFixed(1).replace('.', ',') + ' h';
@@ -1156,7 +1158,7 @@ function renderOrders() {
     const done = (o.rows || []).filter(r => r.text && r.done).length, all = (o.rows || []).filter(r => r.text).length;
     const pos = (o.rows || []).filter(r => String(r.text || '').trim());
     return `
-    <button class="order-card order-row" data-oid="${esc(o.id)}" type="button">
+    <button class="order-card order-row st-${esc(o.status || 'offen')}" data-oid="${esc(o.id)}" type="button">
       <span class="oc-head">
         <span class="oc-id${o.code ? ' mono' : ''}">${esc(o.code || o.fahrzeug || '—')}</span>
         <span class="oc-badges">${statusBadge(o.status)}${o._pending ? '<span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</span>
@@ -1208,7 +1210,7 @@ function renderOrder() {
       </div>
       <div class="actions">
         <select id="o-status" class="o-status" data-f="status" aria-label="Status" ${locked ? 'disabled' : ''}>
-          ${Object.entries(ORDER_STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? 'selected' : ''}>${v}</option>`).join('')}
+          ${Object.entries(ORDER_STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? 'selected' : ''} ${k === 'fertig' && !admin && o.status !== 'fertig' ? 'disabled' : ''}>${v}${k === 'fertig' && !admin ? ' (SE/KÖ)' : ''}</option>`).join('')}
         </select>
         ${admin ? '<button class="btn-sec btn-danger" data-act="delete-order">🗑️ Löschen</button>' : ''}
       </div>
@@ -1855,7 +1857,12 @@ function onOrderInput(t) {
     if (f === 'h') $('o-sum').textContent = fmtHours(orderHours(o));
   } else {
     o[f] = t.value;
-    if (f === 'status') { renderOrder(); if (t.value === 'fertig') archiveOrderServices(o).then(() => offerFollowUpOrder(o)); }
+    if (f === 'status') {
+      if (t.value === 'fertig' && !amAdmin()) { o.status = 'erledigt'; showToast('Den letzten Schritt (2/2) schließen SE oder KÖ ab'); }
+      renderOrder();
+      if (o.status === 'erledigt') showToast('Abgeschlossen 1/2 – SE oder KÖ prüfen und schließen endgültig ab');
+      if (o.status === 'fertig') archiveOrderServices(o).then(() => offerFollowUpOrder(o));
+    }
   }
   if (f !== 'status') reopenIfIncomplete();
   if (t.tagName === 'TEXTAREA') autoSize(t);

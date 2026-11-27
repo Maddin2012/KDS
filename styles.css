@@ -1244,3 +1244,26 @@
     #o-files .ak-img .btn-del-row { background:rgba(180,35,24,.9) !important; color:#fff !important; border-radius:50%; width:22px; height:22px; padding:0; line-height:22px; font-size:12px; opacity:1; box-shadow:0 1px 3px rgba(0,0,0,.4) }
     #o-files .ak-file-b { padding:6px 8px } #o-files .ak-file-b b { font-size:14px } #o-files .ak-ext { min-width:38px; padding:5px 3px }
   }
+  /* ---------- Auftragsstatus: rot → gelb → grün (1/2) → grün (2/2) ---------- */
+  .badge.st-offen { background:#fdecea; color:#b42318 }
+  .badge.st-arbeit { background:#fff4d6; color:#946200 }
+  .badge.st-erledigt { background:#eef9f2; color:var(--done); box-shadow:inset 0 0 0 1.5px #8fd3ae }
+  .badge.st-fertig { background:var(--done); color:#fff }
+  html[data-theme="dark"] .badge.st-offen { background:#3d1c1a; color:#ff9a90 }
+  html[data-theme="dark"] .badge.st-arbeit { background:#3a2f12; color:#ffd466 }
+  html[data-theme="dark"] .badge.st-erledigt { background:#16352a; color:#6fdcaa; box-shadow:inset 0 0 0 1.5px #2f7a55 }
+  html[data-theme="dark"] .badge.st-fertig { background:#2f8a60; color:#fff }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .badge.st-offen { background:#3d1c1a; color:#ff9a90 }
+    html:not([data-theme="light"]) .badge.st-arbeit { background:#3a2f12; color:#ffd466 }
+    html:not([data-theme="light"]) .badge.st-erledigt { background:#16352a; color:#6fdcaa; box-shadow:inset 0 0 0 1.5px #2f7a55 }
+    html:not([data-theme="light"]) .badge.st-fertig { background:#2f8a60; color:#fff } }
+  /* Status oben in der orangen Leiste: eigene Farbe statt schwarz */
+  .hero-badge .badge { background:#fff !important; box-shadow:0 0 0 2px rgba(0,0,0,.15) }
+  .hero-badge .badge.st-offen { color:#b42318 !important } .hero-badge .badge.st-arbeit { color:#946200 !important }
+  .hero-badge .badge.st-erledigt, .hero-badge .badge.st-fertig { color:var(--done) !important }
+  .hero-badge .badge.st-fertig { background:var(--done) !important; color:#fff !important }
+  /* Auftragskarten: Farbstreifen links nach Status */
+  .order-card { border-left:5px solid var(--line) }
+  .order-card.st-offen { border-left-color:#d64535 } .order-card.st-arbeit { border-left-color:#e3a400 }
+  .order-card.st-erledigt { border-left-color:#8fd3ae } .order-card.st-fertig { border-left-color:var(--done) }
+  .order-card:hover { border-color:var(--orange) } .order-card.st-offen:hover, .order-card.st-arbeit:hover, .order-card.st-erledigt:hover, .order-card.st-fertig:hover { border-top-color:var(--orange); border-right-color:var(--orange); border-bottom-color:var(--orange) }

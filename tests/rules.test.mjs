@@ -141,7 +141,8 @@ await t('Mitarbeiter bearbeitet Auftrag', assertSucceeds(updateDoc(oRef(peF, 'a1
 await t('Nummer nachträglich ändern abgelehnt', assertFails(updateDoc(oRef(peF, 'a1'), { nr: '999' })));
 await t('Fremder liest keine Aufträge', assertFails(getDocs(collection(frF, 'workshops', W4, 'auftraege'))));
 await t('Mitarbeiter löscht KEINEN Auftrag', assertFails(deleteDoc(oRef(peF, 'a1'))));
-await t('Mitarbeiter schließt Auftrag ab', assertSucceeds(updateDoc(oRef(peF, 'a1'), { status: 'fertig' })));
+await t('Mitarbeiter schließt Auftrag ab (1/2)', assertSucceeds(updateDoc(oRef(peF, 'a1'), { status: 'erledigt' })));
+await t('Admin schließt Auftrag endgültig ab (2/2)', assertSucceeds(updateDoc(oRef(seF, 'a1'), { status: 'fertig' })));
 await t('Mitarbeiter ändert abgeschlossenen Auftrag NICHT', assertFails(updateDoc(oRef(peF, 'a1'), { km: '1' })));
 await t('Mitarbeiter öffnet abgeschlossenen Auftrag NICHT wieder', assertFails(updateDoc(oRef(peF, 'a1'), { status: 'offen' })));
 await t('Admin ändert abgeschlossenen Auftrag', assertSucceeds(updateDoc(oRef(seF, 'a1'), { km: '2', status: 'offen' })));
@@ -248,6 +249,15 @@ await t('Mitarbeiter sieht Anhänge', assertSucceeds(getDocs(collection(keA, 'wo
 await t('Anhang an abgeschlossenen Auftrag (Mitarbeiter) abgelehnt', assertFails(setDoc(ad(brA, 'a2', 'f2'), { name: 'x.pdf', uid: 'br' })));
 await t('Admin hängt an abgeschlossenen Auftrag an', assertSucceeds(setDoc(ad(seA, 'a2', 'f3'), { name: 'x.pdf', uid: 'se' })));
 await t('Ersteller löscht eigenen Anhang', assertSucceeds((async () => { const b = writeBatch(brA); b.delete(ad(brA, 'a1', 'f1', 'teile', '0000')); b.delete(ad(brA, 'a1', 'f1')); await b.commit(); })()));
+
+// ---------- Zweistufiger Abschluss ----------
+await env.withSecurityRulesDisabled(async (c) => { await setDoc(doc(c.firestore(), 'workshops', W5, 'auftraege', 'a3'), { nr: 'X-3', status: 'arbeit' }); });
+const a3 = (db) => doc(db, 'workshops', W5, 'auftraege', 'a3');
+await t('Mitarbeiter schließt ab (1/2)', assertSucceeds(updateDoc(a3(brA), { status: 'erledigt' })));
+await t('Mitarbeiter darf nach 1/2 noch ändern', assertSucceeds(updateDoc(a3(brA), { notes: 'Nachtrag' })));
+await t('Mitarbeiter schließt NICHT endgültig ab (2/2)', assertFails(updateDoc(a3(brA), { status: 'fertig' })));
+await t('Admin schließt endgültig ab (2/2)', assertSucceeds(updateDoc(a3(seA), { status: 'fertig' })));
+await t('Nach 2/2 ändert Mitarbeiter nichts mehr', assertFails(updateDoc(a3(brA), { notes: 'x' })));
 
 console.log(`\n${ok}/${n} Regeltests bestanden`);
 await env.cleanup();
