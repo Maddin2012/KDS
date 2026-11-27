@@ -1154,15 +1154,16 @@ function renderOrders() {
   }
   $('orders-list').innerHTML = list.map(o => {
     const done = (o.rows || []).filter(r => r.text && r.done).length, all = (o.rows || []).filter(r => r.text).length;
+    const pos = (o.rows || []).filter(r => String(r.text || '').trim());
     return `
-    <button class="arch-row order-row" data-oid="${esc(o.id)}" type="button">
-      <span class="arch-date">${esc(fmtDay(o.datum) || '')}</span>
-      <span class="arch-main">
-        <span class="veh"><span class="mono" style="font-size:14px">${esc(o.nr)}</span> · ${esc([o.code, o.fahrzeug].filter(Boolean).join(' · ') || '—')}</span>
-        <span class="meta" style="display:block">${esc([o.kz, all ? `${done}/${all} Positionen erledigt` : '', orderHours(o) ? fmtHours(orderHours(o)) : '',
-          (o.crew || []).join(', ')].filter(Boolean).join(' · '))}</span>
+    <button class="order-card order-row" data-oid="${esc(o.id)}" type="button">
+      <span class="oc-head">
+        <span class="oc-id${o.code ? ' mono' : ''}">${esc(o.code || o.fahrzeug || '—')}</span>
+        <span class="oc-badges">${statusBadge(o.status)}${o._pending ? '<span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</span>
       </span>
-      <span class="badges">${statusBadge(o.status)}${o._pending ? '<span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</span>
+      <span class="oc-sub"><span class="mono">${esc(o.nr)}</span><span>${esc(fmtDay(o.datum) || '')}</span>${all ? `<span class="oc-prog${done === all ? ' all' : ''}">${done}/${all} erledigt</span>` : ''}</span>
+      ${pos.length ? `<span class="oc-pos">${pos.slice(0, 2).map((r, i) => `<span class="${r.done ? 'is-done' : ''}"><b>${String(i + 1).padStart(2, '0')}</b> ${esc(r.text)}</span>`).join('')}
+        ${pos.length > 2 ? `<small>… und ${pos.length - 2} weitere</small>` : ''}</span>` : '<span class="oc-pos"><small>Noch keine Position eingetragen</small></span>'}
     </button>`;
   }).join('');
 }
