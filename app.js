@@ -1662,7 +1662,11 @@ function openOrderShare() {
   const nAtt = (S.orderFiles || []).length;
   const attSize = (S.orderFiles || []).reduce((s, f) => s + (f.size || 0), 0);
   const attDefault = attSize <= 15 * 1024 * 1024;       // große Videos nicht automatisch mitnehmen
-  const canShare = !!(navigator.canShare && navigator.share);
+  // Am PC ist das Teilen-Fenster des Betriebssystems unzuverlässig (öffnet oft gar nicht) →
+  // dort stattdessen „Per E-Mail“: Datei speichern und E-Mail-Programm mit Betreff öffnen.
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || !!(navigator.userAgentData && navigator.userAgentData.mobile)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  const canShare = mobile && !!(navigator.canShare && navigator.share);
   const canFolder = !!window.showDirectoryPicker;
   const ov = $('setup');
   ov.innerHTML = `<div class="setup-card">${cardHead}<h3>📤 Auftrag senden / speichern</h3>
@@ -1670,10 +1674,11 @@ function openOrderShare() {
     ${nAtt ? `<label class="sh-opt"><input type="checkbox" id="sh-att" ${attDefault ? 'checked' : ''}> Anhänge mitnehmen (${nAtt} ${nAtt === 1 ? 'Datei' : 'Dateien'}, ${fmtSize(attSize)})</label>` : ''}
     <p class="sh-state" id="sh-state">⏳ PDF wird vorbereitet …</p>
     <div class="set-list" style="margin-top:6px">
-      ${canShare ? '<button class="set-btn" type="button" data-sh="share" disabled>📲 Senden <small>WhatsApp, E-Mail, Teams …</small></button>' : ''}
+      ${canShare ? '<button class="set-btn" type="button" data-sh="share" disabled>📲 Senden <small>WhatsApp, E-Mail, Teams …</small></button>'
+        : '<button class="set-btn" type="button" data-sh="mail">✉️ Per E-Mail <small>speichert die Datei und öffnet das E-Mail-Programm</small></button>'}
       <button class="set-btn" type="button" data-sh="save">💾 ${canFolder ? 'In Ordner speichern' : 'Speichern / Herunterladen'} <small>${canFolder ? 'Ordner auf dem Rechner wählen' : 'landet im Download-Ordner'}</small></button>
     </div>
-    ${canShare ? '' : '<p class="proto-meta" style="margin-top:10px">Senden direkt aus der App geht auf diesem Gerät nicht – Datei speichern und dann im E-Mail-Programm anhängen.</p>'}
+    ${canShare ? '' : '<p class="proto-meta" style="margin-top:10px">Am PC dürfen Browser keine Dateien direkt in eine E-Mail legen: Die Datei wird gespeichert (Download-Ordner) – im E-Mail-Fenster dann einfach anhängen bzw. hineinziehen. WhatsApp: am Handy über „Senden“.</p>'}
     <p class="setup-err" id="sh-err"></p>
     <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
   ov.classList.remove('hidden');
@@ -1719,6 +1724,16 @@ function openOrderShare() {
         if (err && err.name === 'InvalidStateError') { $('sh-err').textContent = SHARE_OPEN_MSG; showToast('Teilen-Fenster ist noch offen'); return; }
         fail(err);
       } finally { window.__kdsSharing = false; b.classList.remove('busy'); }
+      return;
+    }
+    if (b.dataset.sh === 'mail') {
+      await ready; if (failed) return;
+      const list = files();
+      list.forEach((f, i) => setTimeout(() => downloadFile(f), i * 500));
+      const subject = `Werkstattauftrag ${o.nr}${o.code ? ' – Fahrzeug ' + o.code : ''}`;
+      const body = `Hallo,\n\nanbei der Werkstattauftrag ${o.nr}${o.code ? ' (Fahrzeug ' + o.code + ')' : ''}.\n\n[Bitte anhängen aus dem Download-Ordner: ${list.map(f => f.name).join(', ')}]\n\nMit freundlichen Grüßen\nKrandienst Schulz`;
+      setTimeout(() => { location.href = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body); }, list.length * 500 + 300);
+      close(); showToast('Datei gespeichert – im E-Mail-Fenster bitte anhängen');
       return;
     }
     // Speichern: Ordnerwahl sofort öffnen, Dateien ggf. danach fertigstellen
