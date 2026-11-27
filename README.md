@@ -112,6 +112,8 @@ Vorwoche/Vormonat; offene und auf Prüfung wartende Aufträge; Säulen je Kalend
 (Jahr wählbar); Tabelle je Jahr (neu angelegt, geschafft, Arbeitsstunden) und je Fahrzeug (Aufträge im Jahr,
 geschafft, Stunden, Summe je Gruppe) – Fahrzeug antippen öffnet die Fahrzeugakte.
 
+**Lager-Statistik (nur SE/KÖ).** ⚙ Einstellungen → *Daten* → **„📦 Statistik Lager“**: Materialverbrauch in € (Woche, Monat, Jahr – jeweils mit Vorperiode), Wareneingang, Lagerwert, leere/nachzubestellende Artikel; Verbrauch und Wareneingang je Monat (Jahr wählbar); Verbrauch je Fahrzeug (über den Auftrag oder eine Fahrzeugnummer im Verwendungszweck), je Kategorie und je Lagerort; Top 10 Artikel; Ladenhüter (Bestand, seit 6 Monaten nicht bewegt) und Inventur-Differenzen in €. Rückgaben aus Aufträgen werden vom Verbrauch abgezogen. Jede Buchung speichert jetzt den Preis zum Buchungszeitpunkt; ältere Buchungen werden mit dem aktuellen Artikelpreis bewertet.
+
 **Fuhrpark aus Excel.** ⚙ Einstellungen → *Daten* → **„Fuhrpark aus Excel ersetzen“**
 (nur Admins): die Fahrzeugliste (.xls/.xlsx, Aufbau wie „Fz.-Ident-Nr.“) wählen – Gruppen
 (Krane, Ladekrane, Zugmaschinen, BF3, Auflieger, PKW, Stapler) und Spalten werden übernommen,

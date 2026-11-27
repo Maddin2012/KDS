@@ -131,7 +131,7 @@ export function createLocalStore() {
       write(K_ART, read(K_ART, []).filter(a => a.id !== id));
       const b = read(K_BOOK, {}); delete b[id]; write(K_BOOK, b); emitArt();
     },
-    async book(aid, { typ, menge, grund }, by) {
+    async book(aid, { typ, menge, grund, oid, vehId }, by) {
       const list = read(K_ART, []); const a = list.find(x => x.id === aid);
       if (!a) throw new Error('Artikel nicht gefunden.');
       const cur = Number(a.bestand) || 0; let neu;
@@ -140,11 +140,13 @@ export function createLocalStore() {
       else neu = menge;
       a.bestand = neu; a.bestandVon = by || ''; write(K_ART, list);
       const b = read(K_BOOK, {}); (b[aid] = b[aid] || []).unshift({ id: 'b' + Date.now(), typ, menge: typ === 'Korrektur' ? neu - cur : menge,
-        grund: grund || '', ts: Date.now(), bestandVorher: cur, bestandNachher: neu, von: by || '' });
-      b[aid] = b[aid].slice(0, 100); write(K_BOOK, b);
+        grund: grund || '', ts: Date.now(), bestandVorher: cur, bestandNachher: neu, von: by || '', preis: Number(a.preis) || 0,
+        ...(oid ? { oid } : {}), ...(vehId ? { vehId } : {}) });
+      b[aid] = b[aid].slice(0, 2000); write(K_BOOK, b);
       emitArt(); bookSubs.forEach(x => { if (x.aid === aid) x.cb(b[aid]); });
       return neu;
     },
+    async getBookings(aid) { return (read(K_BOOK, {})[aid] || []).map(x => ({ ...x, aid })); },
     onBookings(aid, cb) { const x = { aid, cb }; bookSubs.add(x); cb(read(K_BOOK, {})[aid] || []); return () => bookSubs.delete(x); },
     onRunning(cb) { this._runSubs = this._runSubs || new Set(); this._runSubs.add(cb); cb(read('kds_local_running', [])); return () => this._runSubs.delete(cb); },
     async publishRunning(cat, data) { const l = read('kds_local_running', []).filter(x => x.cat !== cat); l.push({ ...data, cat, uid: 'local', id: 'local_' + cat, ts: Date.now() }); write('kds_local_running', l); (this._runSubs || []).forEach(f => f(l)); },

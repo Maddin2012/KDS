@@ -1299,3 +1299,7 @@
   @media (max-width:900px) { .sc-tiles { grid-template-columns:repeat(3, 1fr) } }
   @media (max-width:560px) { .sc-tiles { grid-template-columns:1fr 1fr } .sc-tile b { font-size:26px } .sc-inbar { width:60px } }
   @media print { .sc-bar path { fill:#ff8300 !important } }
+  .sc-two { display:grid; grid-template-columns:1fr 1fr; gap:14px } .sc-two > .box { margin-bottom:14px; min-width:0 }
+  @media (max-width:900px) { .sc-two { grid-template-columns:1fr; gap:0 } }
+  .sc-arow { cursor:pointer } .sc-arow:hover td { background:var(--hover) }
+  .sc-cor { font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:16px } .sc-cor.neg { color:#b42318 } .sc-cor.pos { color:var(--done) }

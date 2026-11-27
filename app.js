@@ -234,6 +234,7 @@ function renderChrome() {
   let title;
   if (mode === 'home') title = 'Startseite';
   else if (mode === 'stats') title = 'Statistik Aufträge';
+  else if (mode === 'lstats') title = 'Statistik Lager';
   else if (mode === 'live') title = 'Laufende Servicelisten';
   else if (mode === 'liveview') { const r = S.running.find(x => x.id === S.liveId); title = 'Live: ' + (r ? r.cat + ' ' + ((r.draft && r.draft.header && r.draft.header.fId) || '') : 'Serviceliste'); }
   else if (mode === 'archive') title = 'Archiv';
@@ -250,7 +251,7 @@ function renderChrome() {
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
   $('hero-badge').innerHTML = mode === 'order' && S.orderEdit ? statusBadge(S.orderEdit.status) : '';
-  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : mode === 'stats' ? 'Statistik' : (mode === 'live' || mode === 'liveview') ? 'Laufende Listen' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'stats' || mode === 'lstats') ? 'Statistik' : (mode === 'live' || mode === 'liveview') ? 'Laufende Listen' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-home').classList.toggle('hidden', S.view !== 'home');
@@ -259,6 +260,7 @@ function renderChrome() {
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-live').classList.toggle('hidden', S.view !== 'live' && S.view !== 'liveview');
   $('view-stats').classList.toggle('hidden', S.view !== 'stats');
+  $('view-lstats').classList.toggle('hidden', S.view !== 'lstats');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
   $('view-vehicle').classList.toggle('hidden', S.view !== 'vehicle');
@@ -267,7 +269,7 @@ function renderChrome() {
   $('view-stock').classList.toggle('hidden', S.view !== 'stock');
   $('view-article').classList.toggle('hidden', S.view !== 'article');
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
-  $('cards').classList.toggle('hidden', ['home', 'stats', 'live', 'liveview', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
+  $('cards').classList.toggle('hidden', ['home', 'stats', 'lstats', 'live', 'liveview', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   renderOrderLink();
   const cp = document.querySelector('#hero-actions [data-act="close-protocol"]');
@@ -1446,7 +1448,7 @@ function openOrderStockPicker(rid) {
     const btn = ov.querySelector('#osp-form button[type="submit"]');
     btn.disabled = true; $('osp-err').textContent = 'wird gebucht …';
     try {
-      const neu = await S.store.book(sel.id, { typ: 'Entnahme', menge: qty, grund: orderBookingText(o) }, S.me);
+      const neu = await S.store.book(sel.id, { typ: 'Entnahme', menge: qty, grund: orderBookingText(o), oid: o.id, vehId: o.vehId || '' }, S.me);
       if (S.orderEdit && S.orderEdit.id === o.id) {
         const entry = { id: newId(), aid: sel.id, name: sel.name || '', sku: sel.sku || '', einheit: sel.einheit || '', menge: qty, ts: Date.now(), von: S.me || '' };
         const r = rid && S.orderEdit.rows.find(x => x.id === rid);
@@ -1476,7 +1478,7 @@ async function removeOrderStock(mid) {
     if (!(await confirmModal(`„${m.name}“ gibt es im Lager nicht mehr. Nur aus dem Auftrag entfernen?`, 'Entfernen'))) return;
   } else if (!(await confirmModal(`${fmtNum(m.menge)} ${m.einheit} „${m.name}“ wieder ins Lager zurückbuchen und aus dem Auftrag entfernen?`, 'Zurückbuchen'))) return;
   try {
-    if (art) await S.store.book(m.aid, { typ: 'Zulauf', menge: num(m.menge), grund: 'Rückgabe aus ' + orderBookingText(o) }, S.me);
+    if (art) await S.store.book(m.aid, { typ: 'Zulauf', menge: num(m.menge), grund: 'Rückgabe aus ' + orderBookingText(o), oid: o.id, vehId: o.vehId || '' }, S.me);
     const cur = S.orderEdit && S.orderEdit.id === o.id ? S.orderEdit : o;
     cur.lager = cur.lager.filter(x => x.id !== mid);
     const r = m.rid && cur.rows.find(x => x.id === m.rid);
@@ -1779,18 +1781,19 @@ function isoWeek(d) {
 const weekStart = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 /* Säulendiagramm (eine Reihe) als SVG – Werte stehen über den Säulen, Hover zeigt Details */
-function barChart(items, { label = 'Aufträge', highlight = -1 } = {}) {
-  const W = 640, H = 200, padL = 28, padB = 26, padT = 18, n = items.length;
-  const max = Math.max(1, ...items.map(i => i.v)), step = Math.max(1, Math.ceil(max / 4));
+function barChart(items, { label = 'Aufträge', highlight = -1, fmt = (v) => String(v) } = {}) {
+  const W = 640, H = 200, padL = 40, padB = 26, padT = 18, n = items.length;
+  const max = Math.max(1, ...items.map(i => i.v)), raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const step = Math.max(1, [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw) || 10 * mag);
   const top = step * Math.ceil(max / step), bw = (W - padL - 8) / n, inner = Math.max(6, bw - Math.max(4, bw * 0.28));
   const y = (v) => padT + (H - padT - padB) * (1 - v / top);
-  let grid = ''; for (let g = 0; g <= top; g += step) grid += `<line x1="${padL}" x2="${W - 4}" y1="${y(g)}" y2="${y(g)}" class="sc-grid"/><text x="${padL - 6}" y="${y(g) + 3.5}" class="sc-ax" text-anchor="end">${g}</text>`;
+  let grid = ''; for (let g = 0; g <= top; g += step) grid += `<line x1="${padL}" x2="${W - 4}" y1="${y(g)}" y2="${y(g)}" class="sc-grid"/><text x="${padL - 6}" y="${y(g) + 3.5}" class="sc-ax" text-anchor="end">${esc(fmt(g))}</text>`;
   const bars = items.map((it, i) => {
     const x = padL + i * bw + (bw - inner) / 2, h = Math.max(0, y(0) - y(it.v)), r = Math.min(4, inner / 2, h);
     const path = h > 0 ? `M${x},${y(0)} V${y(it.v) + r} Q${x},${y(it.v)} ${x + r},${y(it.v)} H${x + inner - r} Q${x + inner},${y(it.v)} ${x + inner},${y(it.v) + r} V${y(0)} Z` : '';
-    return `<g class="sc-bar${i === highlight ? ' hl' : ''}"><title>${esc(it.title || it.l)}: ${it.v} ${label}</title>
+    return `<g class="sc-bar${i === highlight ? ' hl' : ''}"><title>${esc(it.title || it.l)}: ${esc(it.tip || fmt(it.v) + ' ' + label)}</title>
       <rect x="${padL + i * bw}" y="${padT}" width="${bw}" height="${H - padT - padB}" class="sc-hit"/>
-      ${path ? `<path d="${path}"/>` : ''}${it.v ? `<text x="${x + inner / 2}" y="${y(it.v) - 5}" class="sc-val" text-anchor="middle">${it.v}</text>` : ''}
+      ${path ? `<path d="${path}"/>` : ''}${it.v ? `<text x="${x + inner / 2}" y="${y(it.v) - 5}" class="sc-val" text-anchor="middle">${esc(fmt(it.v))}</text>` : ''}
       <text x="${x + inner / 2}" y="${H - 8}" class="sc-ax" text-anchor="middle">${esc(it.l)}</text></g>`;
   }).join('');
   return `<svg class="sc-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${grid}<line x1="${padL}" x2="${W - 4}" y1="${y(0)}" y2="${y(0)}" class="sc-base"/>${bars}</svg>`;
@@ -1855,6 +1858,105 @@ function renderStats() {
       <p class="proto-meta" style="margin-top:8px">Je Gruppe: ${Object.entries(groupRows).sort((a, b) => b[1].created - a[1].created).map(([g, v]) => `<b>${esc(g)}</b> ${v.created} Aufträge (${v.n} Fahrzeuge)`).join(' · ')}</p>
       <p class="proto-meta no-print">Fahrzeug antippen öffnet die Fahrzeugakte.</p>`
         : `<p class="proto-meta">Im Jahr ${year} gibt es noch keine Aufträge.</p>`}</div>`;
+}
+
+/* ---------- Lager-Statistik (nur SE/KÖ) ---------- */
+const euro0 = (v) => (Math.round(v) || 0).toLocaleString('de-DE') + ' €';
+const euroShort = (v) => Math.abs(v) >= 1000 ? (v / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' T€' : Math.round(v) + ' €';
+async function loadLagerStats() {
+  S.lstats = { loading: true };
+  try {
+    const lists = await Promise.all(S.articles.map(a => S.store.getBookings(a.id).catch(() => [])));
+    S.lstats = { bookings: lists.flat(), at: Date.now() };
+  } catch (e) { S.lstats = { error: (e && e.message) || 'Laden fehlgeschlagen' }; }
+  if (S.view === 'lstats') renderLagerStats();
+}
+/* Fahrzeug zu einer Buchung: gespeichert, über den Auftrag oder über eine ID im Verwendungszweck */
+function bookingVehicle(b) {
+  if (b.vehId) { const v = S.vehicles.find(x => x.id === b.vehId); if (v) return v; }
+  let o = b.oid ? S.orders.find(x => x.id === b.oid) : null;
+  if (!o) { const m = String(b.grund || '').match(/Auftrag\s+(\S+)/); if (m) o = S.orders.find(x => x.nr === m[1]); }
+  if (o) { const v = orderVehicle(o); if (v) return v; }
+  const g = ' ' + String(b.grund || '').toLowerCase() + ' ';
+  return S.vehicles.find(v => v.code && v.code.length >= 2 && new RegExp('[^0-9a-z]' + v.code.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^0-9a-z]').test(g)) || null;
+}
+function renderLagerStats() {
+  const box = $('view-lstats'); if (!box || !amAdmin()) return;
+  if (!S.lstats) { box.innerHTML = '<div class="empty-note">Buchungen werden geladen …</div>'; loadLagerStats(); return; }
+  if (S.lstats.loading) { box.innerHTML = '<div class="empty-note">Buchungen werden geladen …</div>'; return; }
+  if (S.lstats.error) { box.innerHTML = `<div class="empty-note">${esc(S.lstats.error)}<br><button class="btn-sec" data-act="lstats-reload" type="button">Nochmal</button></div>`; return; }
+  const now = new Date(), art = new Map(S.articles.map(a => [a.id, a]));
+  const price = (b) => { const p = Number(b.preis); return p > 0 ? p : num((art.get(b.aid) || {}).preis); };
+  const isReturn = (b) => b.typ === 'Zulauf' && (b.oid || /^Rückgabe/i.test(b.grund || ''));
+  // Verbrauch (+) bzw. Rückgabe (−) in €, Wareneingang, Korrektur
+  const rows = S.lstats.bookings.map(b => {
+    const m = num(b.menge), p = price(b), a = art.get(b.aid) || {};
+    return { b, a, t: Number(b.ts) || 0, qty: m, use: b.typ === 'Entnahme' ? m * p : isReturn(b) ? -m * p : 0, useQty: b.typ === 'Entnahme' ? m : isReturn(b) ? -m : 0,
+      inn: b.typ === 'Zulauf' && !isReturn(b) ? m * p : 0, cor: b.typ === 'Korrektur' ? m * p : 0 };
+  });
+  const sum = (from, to, k) => rows.filter(r => r.t >= from && r.t < to).reduce((s, r) => s + r[k], 0);
+  const ws = weekStart(now).getTime(), ms = new Date(now.getFullYear(), now.getMonth(), 1).getTime(), ys = new Date(now.getFullYear(), 0, 1).getTime(), end = Date.now() + 864e5;
+  const pms = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(), pys = new Date(now.getFullYear() - 1, 0, 1).getTime();
+  const lagerwert = S.articles.reduce((s, a) => s + num(a.bestand) * num(a.preis), 0);
+  const leer = S.articles.filter(a => artStatus(a) === 'leer').length, low = S.articles.filter(a => artStatus(a) === 'niedrig').length;
+  const years = [...new Set([now.getFullYear(), ...rows.map(r => new Date(r.t).getFullYear())])].filter(y => y > 2000).sort((a, b) => b - a);
+  const year = S.lstatsYear && years.includes(S.lstatsYear) ? S.lstatsYear : now.getFullYear();
+  const y0 = new Date(year, 0, 1).getTime(), y1 = new Date(year + 1, 0, 1).getTime(), yr = rows.filter(r => r.t >= y0 && r.t < y1);
+  const monthly = (k) => MONATE.map((l, i) => { const s = new Date(year, i, 1).getTime(), e = new Date(year, i + 1, 1).getTime(); const v = Math.max(0, sum(s, e, k)); return { l, title: `${l} ${year}`, v, tip: euro0(v) }; });
+  const group = (keyFn, labelFn) => { const mp = new Map(); yr.forEach(r => { if (!r.use) return; const k = keyFn(r); const g = mp.get(k) || { label: labelFn(r), eur: 0, n: 0, arts: new Map() }; g.eur += r.use; if (r.b.typ === 'Entnahme') g.n++; g.arts.set(r.a.name || '?', (g.arts.get(r.a.name || '?') || 0) + r.use); mp.set(k, g); });
+    return [...mp.values()].filter(g => Math.abs(g.eur) > 0.005).sort((a, b) => b.eur - a.eur); };
+  const byVeh = group(r => { const v = bookingVehicle(r.b); return v ? v.id : '—'; }, r => { const v = bookingVehicle(r.b); return v ? vehicleLabel(v) : 'ohne Fahrzeug'; });
+  const byKat = group(r => r.a.kat || '—', r => r.a.kat || 'ohne Kategorie');
+  const byOrt = group(r => r.a.lagerort || '—', r => r.a.lagerort || 'ohne Lagerort');
+  const topMap = new Map(); yr.forEach(r => { if (!r.use) return; const t = topMap.get(r.b.aid) || { a: r.a, eur: 0, qty: 0 }; t.eur += r.use; t.qty += r.useQty; topMap.set(r.b.aid, t); });
+  const top = [...topMap.values()].filter(t => t.eur > 0).sort((a, b) => b.eur - a.eur).slice(0, 10);
+  const lastMove = new Map(); rows.forEach(r => { if (r.t > (lastMove.get(r.b.aid) || 0)) lastMove.set(r.b.aid, r.t); });
+  const halfYear = Date.now() - 182 * 864e5;
+  const shelf = S.articles.filter(a => num(a.bestand) > 0 && (lastMove.get(a.id) || 0) < halfYear).map(a => ({ a, last: lastMove.get(a.id) || 0, wert: num(a.bestand) * num(a.preis) })).sort((x, y) => y.wert - x.wert);
+  const cors = yr.filter(r => r.b.typ === 'Korrektur' && r.qty !== 0), corSum = cors.reduce((s, r) => s + r.cor, 0);
+  const tile = (l, v, sub, cls = '') => `<div class="sc-tile ${cls}"><label>${l}</label><b>${v}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  const gTable = (title, list, col) => `<div class="box"><div class="sec-title"><div class="title-left"><span>${title} ${year}</span></div></div>
+    ${list.length ? (() => { const mx = Math.max(...list.map(g => g.eur), 1); return `<table class="service-table sc-table"><thead><tr><th>${col}</th><th>Verbrauch</th><th>Entnahmen</th><th>Meistverbraucht</th></tr></thead>
+      <tbody>${list.slice(0, 25).map(g => { const t = [...g.arts.entries()].sort((a, b) => b[1] - a[1])[0]; return `<tr><td data-l="${col}"><b>${esc(g.label)}</b></td>
+        <td data-l="Verbrauch"><span class="sc-inbar"><span style="width:${Math.max(0, Math.round(g.eur / mx * 100))}%"></span></span><b class="mono">${esc(euro0(g.eur))}</b></td>
+        <td data-l="Entnahmen" class="mono">${g.n}</td><td data-l="Meistverbraucht">${t ? esc(t[0]) : '—'}</td></tr>`; }).join('')}</tbody></table>`; })()
+      : '<p class="proto-meta">Keine Entnahmen in diesem Jahr.</p>'}</div>`;
+  const noPrice = S.articles.filter(a => !num(a.preis)).length;
+  box.innerHTML = `
+    <div class="proto-banner no-print"><span class="proto-meta">Werte = Menge × Einzelpreis. Ab jetzt wird der Preis bei jeder Buchung gespeichert; ältere Buchungen rechnen mit dem heutigen Preis.${noPrice ? ` <b>${noPrice} Artikel ohne Preis</b> zählen mit 0 €.` : ''}</span>
+      <div class="actions"><button class="btn-sec" data-act="lstats-reload" type="button">↻ Aktualisieren</button></div></div>
+    <div class="sc-tiles">
+      ${tile('Verbrauch diese Woche', euro0(sum(ws, end, 'use')), 'Vorwoche ' + euro0(sum(ws - 7 * 864e5, ws, 'use')))}
+      ${tile('Verbrauch dieser Monat', euro0(sum(ms, end, 'use')), MONATE[now.getMonth()] + ' · Vormonat ' + euro0(sum(pms, ms, 'use')))}
+      ${tile('Verbrauch dieses Jahr', euro0(sum(ys, end, 'use')), now.getFullYear() + ' · Vorjahr ' + euro0(sum(pys, ys, 'use')))}
+      ${tile('Wareneingang', euro0(sum(ms, end, 'inn')), 'Monat · Jahr ' + euro0(sum(ys, end, 'inn')))}
+      ${tile('Lagerwert', euro0(lagerwert), `${S.articles.length} Artikel · ${leer} leer · ${low} nachbestellen`)}
+    </div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Verbrauch je Monat</span></div>
+      <select id="ls-year" class="sc-year" aria-label="Jahr">${years.map(y => `<option ${y === year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+      ${barChart(monthly('use'), { label: 'Verbrauch', highlight: year === now.getFullYear() ? now.getMonth() : -1, fmt: euroShort })}
+      <p class="proto-meta">${year}: Verbrauch ${esc(euro0(yr.reduce((s, r) => s + r.use, 0)))} · Wareneingang ${esc(euro0(yr.reduce((s, r) => s + r.inn, 0)))}</p></div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Wareneingang je Monat</span></div><span class="proto-meta">${year}</span></div>
+      ${barChart(monthly('inn'), { label: 'Wareneingang', highlight: year === now.getFullYear() ? now.getMonth() : -1, fmt: euroShort })}</div>
+    ${gTable('Verbrauch je Fahrzeug', byVeh, 'Fahrzeug')}
+    <div class="sc-two">${gTable('Je Kategorie', byKat, 'Kategorie')}${gTable('Je Lagerort', byOrt, 'Lagerort')}</div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Top 10 Artikel nach Verbrauch ${year}</span></div></div>
+      ${top.length ? `<table class="service-table sc-table"><thead><tr><th>#</th><th>Artikel</th><th>Menge</th><th>Verbrauch</th></tr></thead>
+      <tbody>${top.map((t, i) => `<tr class="sc-arow" data-aid="${esc(t.a.id || '')}"><td data-l="#" class="mono">${i + 1}</td><td data-l="Artikel"><b>${esc(t.a.name || '?')}</b><small> ${esc(t.a.sku || '')}</small></td>
+        <td data-l="Menge" class="mono">${esc(fmtNum(t.qty))} ${esc(t.a.einheit || '')}</td><td data-l="Verbrauch" class="mono"><b>${esc(euro0(t.eur))}</b></td></tr>`).join('')}</tbody></table>`
+      : '<p class="proto-meta">Keine Entnahmen in diesem Jahr.</p>'}</div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Ladenhüter</span></div><span class="proto-meta">Bestand, seit über 6 Monaten nicht bewegt</span></div>
+      ${shelf.length ? `<table class="service-table sc-table"><thead><tr><th>Artikel</th><th>Lagerort</th><th>Bestand</th><th>Wert</th><th>Letzte Bewegung</th></tr></thead>
+      <tbody>${shelf.slice(0, 30).map(x => `<tr class="sc-arow" data-aid="${esc(x.a.id)}"><td data-l="Artikel"><b>${esc(x.a.name)}</b></td><td data-l="Lagerort">${esc(x.a.lagerort || '—')}</td>
+        <td data-l="Bestand" class="mono">${esc(fmtNum(x.a.bestand))} ${esc(x.a.einheit || '')}</td><td data-l="Wert" class="mono">${esc(euro0(x.wert))}</td>
+        <td data-l="Letzte Bewegung">${x.last ? esc(new Date(x.last).toLocaleDateString('de-DE')) : 'nie gebucht'}</td></tr>`).join('')}</tbody></table>
+      <p class="proto-meta">Darin gebunden: <b>${esc(euro0(shelf.reduce((s, x) => s + x.wert, 0)))}</b></p>` : '<p class="proto-meta">Keine Ladenhüter – alles mit Bestand wurde in den letzten 6 Monaten bewegt.</p>'}</div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Inventur-Differenzen ${year}</span></div>
+      <span class="sc-cor ${corSum < 0 ? 'neg' : corSum > 0 ? 'pos' : ''}">${corSum > 0 ? '+' : ''}${esc(euro0(corSum))}</span></div>
+      ${cors.length ? `<table class="service-table sc-table"><thead><tr><th>Datum</th><th>Artikel</th><th>Differenz</th><th>Wert</th><th>Wer</th></tr></thead>
+      <tbody>${cors.sort((a, b) => b.t - a.t).slice(0, 30).map(r => `<tr><td data-l="Datum">${esc(new Date(r.t).toLocaleDateString('de-DE'))}</td><td data-l="Artikel"><b>${esc(r.a.name || '?')}</b></td>
+        <td data-l="Differenz" class="mono">${r.qty > 0 ? '+' : ''}${esc(fmtNum(r.qty))} ${esc(r.a.einheit || '')}</td><td data-l="Wert" class="mono">${r.cor > 0 ? '+' : ''}${esc(euro0(r.cor))}</td><td data-l="Wer">${esc(r.b.von || '')}</td></tr>`).join('')}</tbody></table>
+      <p class="proto-meta">Minus = weniger gezählt als gebucht (Schwund), Plus = mehr gezählt.</p>` : '<p class="proto-meta">Keine Inventur-Korrekturen in diesem Jahr.</p>'}</div>`;
 }
 
 /* ---------- Serviceliste zum Auftrag ---------- */
@@ -2872,12 +2974,13 @@ function render() {
   if (S.view !== 'order' && orderFilesFor) closeOrderFiles();
   if (S.fleetEdit && (S.view !== 'fleet' || !amAdmin())) { flushFleetEdit(); S.fleetEdit = false; }
   if (S.view === 'reorder' && !amAdmin()) S.view = 'stock';   // Bestellvorschläge nur für SE/KÖ
-  if (S.view === 'stats' && !amAdmin()) S.view = 'home';      // Statistik nur für SE/KÖ
+  if ((S.view === 'stats' || S.view === 'lstats') && !amAdmin()) S.view = 'home';      // Statistik nur für SE/KÖ
   if (S.view === 'list') {
     if (S.edit) renderEdit();
     else { renderFill(); applyHeader(draft.header); renderMonteure(); }
   } else if (S.view === 'archive') renderArchive();
   else if (S.view === 'stats') renderStats();
+  else if (S.view === 'lstats') renderLagerStats();
   else if (S.view === 'live') renderLive();
   else if (S.view === 'liveview') renderLiveView();
   else if (S.view === 'protocol') renderProtocol();
@@ -3426,6 +3529,7 @@ function openSettings() {
         <div class="set-list">
           <button class="set-btn" type="button" data-s="fleetxls">Fuhrpark aus Excel ersetzen <small>Fahrzeugliste .xls / .xlsx</small></button>
           <button class="set-btn" type="button" data-s="stats">📊 Statistik Aufträge <small>Woche, Monat, Jahr, je Fahrzeug</small></button>
+          <button class="set-btn" type="button" data-s="lstats">📦 Statistik Lager <small>Verbrauch, Wareneingang, Lagerwert</small></button>
           <button class="set-btn" type="button" data-s="import">Daten aus alter Version übernehmen <small>KDS-Altdaten.json</small></button>
         </div>
       </div>` : ''}
@@ -3483,6 +3587,7 @@ function openSettings() {
     const go = b.dataset.s;
     if (go === 'close') { close(); return; }
     if (go === 'stats') { if (!amAdmin()) return; close(); S.view = 'stats'; render(); window.scrollTo(0, 0); return; }
+    if (go === 'lstats') { if (!amAdmin()) return; close(); S.lstats = null; S.view = 'lstats'; render(); window.scrollTo(0, 0); return; }
     if (go === 'newrec') {
       if (!amAdmin()) return;
       if (!(await confirmModal(`Neuen Wiederherstellungs-Code für ${S.me} erstellen? Ein alter Code wird damit ungültig.`, 'Erstellen', false))) return;
@@ -4000,6 +4105,7 @@ const actions = {
   'order-stock-add': () => openOrderStockPicker(),
   'order-add-service': () => addServiceToOrder(),
   'order-share': () => openOrderShare(),
+  'lstats-reload': () => { S.lstats = null; renderLagerStats(); },
   'order-attach': () => { if (orderLocked(S.orderEdit)) return; const i = $('order-file'); i.value = ''; i.click(); },
   'order-file-view': (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (f && S.orderEdit) viewStoredFile('auftraege', S.orderEdit.id, f); },
   'order-file-del': async (btn) => { const f = (S.orderFiles || []).find(x => x.id === btn.dataset.id); if (!f || !S.orderEdit) return;
@@ -4144,6 +4250,8 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('view-lstats').addEventListener('change', (e) => { if (e.target.id === 'ls-year') { S.lstatsYear = +e.target.value; renderLagerStats(); } });
+$('view-lstats').addEventListener('click', (e) => { const r = e.target.closest('.sc-arow'); if (r && r.dataset.aid && S.articles.some(x => x.id === r.dataset.aid)) openArticle(r.dataset.aid); });
 $('view-stats').addEventListener('change', (e) => { if (e.target.id === 'st-year') { S.statsYear = +e.target.value; renderStats(); } });
 $('view-stats').addEventListener('click', (e) => { const r = e.target.closest('.sc-vrow'); if (r) openAkte(r.dataset.vid); });
 $('order-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadOrderFiles(fs); });

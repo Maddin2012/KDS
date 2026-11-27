@@ -369,7 +369,7 @@ export function createCloudStore(cfg) {
       return track(b.commit());
     },
     /* Buchung: Bestand + Historie in EINER Transaktion (kein Überschreiben bei gleichzeitigem Buchen) */
-    async book(aid, { typ, menge, grund }, by) {
+    async book(aid, { typ, menge, grund, oid, vehId }, by) {
       if (!navigator.onLine) throw new Error('Zum Buchen wird Internet gebraucht.');
       const aref = doc(db, 'workshops', wid, 'artikel', aid);
       const bref = doc(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'));
@@ -382,10 +382,17 @@ export function createCloudStore(cfg) {
         else if (typ === 'Entnahme') { if (menge > cur) throw Object.assign(new Error('Zu wenig Bestand.'), { code: 'zu-wenig', bestand: cur }); neu = cur - menge; }
         else neu = menge;   // Korrektur: neuer Bestand
         tx.update(aref, { bestand: neu, bestandAt: serverTimestamp(), bestandVon: by || '', lastBooking: bref.id });
+        // Preis zum Buchungszeitpunkt (für die Statistik) und ggf. Auftrag/Fahrzeug mitschreiben
         tx.set(bref, { typ, menge: typ === 'Korrektur' ? neu - cur : menge, grund: grund || '', ts: Date.now(),
-          bestandVorher: cur, bestandNachher: neu, von: by || '' });
+          bestandVorher: cur, bestandNachher: neu, von: by || '', preis: Number(s.data().preis) || 0,
+          ...(oid ? { oid } : {}), ...(vehId ? { vehId } : {}) });
         return neu;
       }), 15000, 'Keine Verbindung zur Datenbank.');
+    },
+    /* Alle Buchungen eines Artikels (für die Lager-Statistik) */
+    async getBookings(aid) {
+      const qs = await getDocs(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'));
+      const l = []; qs.forEach(d => l.push({ ...d.data(), id: d.id, aid })); return l;
     },
     onBookings(aid, cb) {
       const q = query(collection(db, 'workshops', wid, 'artikel', aid, 'buchungen'), orderBy('ts', 'desc'), limit(100));
