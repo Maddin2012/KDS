@@ -1224,3 +1224,23 @@
   :root { --ui-zoom: 1.1 }
   .main, .side-groups, .side-foot, .setup-card, .confirm-box, .scan-card, .toast, #toast { zoom: var(--ui-zoom) }
   @media print { .main, .side-groups, .side-foot, .setup-card, .confirm-box { zoom: 1 !important } }
+  /* Anhänge im Auftrag: kleine Vorschaubilder nebeneinander */
+  #o-files .ak-gal { grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px }
+  #o-files .ak-img > button { aspect-ratio:1 }
+  #o-files .ak-img figcaption { padding:2px 4px; font-size:10px }
+  #o-files .ak-img figcaption span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+  #o-files .ak-img .btn-del-row { padding:0 4px; font-size:13px }
+  #o-files .vid-badge { width:30px; height:30px; font-size:13px }
+  @media (max-width:760px) {
+    #o-files .ak-gal { grid-template-columns:repeat(4, 1fr); gap:6px }
+    #o-files .ak-img figcaption span { display:none }
+    #o-files .ak-img figcaption { justify-content:flex-end }
+  }
+  @media (max-width:380px) { #o-files .ak-gal { grid-template-columns:repeat(3, 1fr) } }
+  @media (max-width:760px) {
+    #o-files .ak-img { position:relative; border-radius:6px }
+    #o-files .ak-img figcaption { position:absolute; top:2px; right:2px; padding:0; background:none }
+    #o-files .ak-img figcaption:empty { display:none }
+    #o-files .ak-img .btn-del-row { background:rgba(180,35,24,.9) !important; color:#fff !important; border-radius:50%; width:22px; height:22px; padding:0; line-height:22px; font-size:12px; opacity:1; box-shadow:0 1px 3px rgba(0,0,0,.4) }
+    #o-files .ak-file-b { padding:6px 8px } #o-files .ak-file-b b { font-size:14px } #o-files .ak-ext { min-width:38px; padding:5px 3px }
+  }
