@@ -1275,3 +1275,4 @@
   .order-card.st-erledigt { border-left-color:var(--orange) }
   .sh-opt { display:flex; gap:8px; align-items:center; font-size:15px; margin:6px 0 } .sh-opt input { width:18px; height:18px; accent-color:var(--orange) }
   .sh-state { font-size:13px; color:var(--steel); margin:6px 0 0 }
+  .set-btn.busy { opacity:.6; pointer-events:none }

@@ -1655,6 +1655,7 @@ function downloadFile(file) {
   const url = URL.createObjectURL(file), a = document.createElement('a');
   a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+const SHARE_OPEN_MSG = 'Das Teilen-Fenster ist noch geöffnet – am PC erscheint es oft klein am Rand oder hinter dem Browser. Dort ein Programm wählen oder es schließen, dann nochmal „Senden“. Klappt das Senden am PC nicht: „In Ordner speichern“ und die Datei im E-Mail-Programm anhängen.';
 function openOrderShare() {
   const o = S.orderEdit; if (!o) return;
   flushOrderSave(); flushSvcSync();
@@ -1705,12 +1706,19 @@ function openOrderShare() {
     $('sh-err').textContent = '';
     if (b.dataset.sh === 'share') {
       if (!pdf) return;
+      if (window.__kdsSharing) { $('sh-err').textContent = SHARE_OPEN_MSG; return; }
       let list = files();
       try { if (!navigator.canShare({ files: list })) { list = [pdf]; if (list.length < files().length) showToast('Anhänge lassen sich hier nicht mitsenden – nur das PDF'); } } catch (err) { list = [pdf]; }
+      window.__kdsSharing = true; b.classList.add('busy');
+      $('sh-state').textContent = '📲 Teilen-Fenster ist geöffnet – dort Programm (z. B. Outlook, WhatsApp) auswählen …';
       try {
         await navigator.share({ files: list, title: 'Auftrag ' + o.nr, text: `Werkstattauftrag ${o.nr}${o.code ? ' – Fahrzeug ' + o.code : ''}` });   // direkt im Tipp-Ereignis
         close(); showToast('Gesendet');
-      } catch (err) { if (err && err.name === 'AbortError') return; fail(err); }
+      } catch (err) {
+        if (err && err.name === 'AbortError') { $('sh-state').textContent = '✓ Bereit – Senden abgebrochen'; return; }
+        if (err && err.name === 'InvalidStateError') { $('sh-err').textContent = SHARE_OPEN_MSG; showToast('Teilen-Fenster ist noch offen'); return; }
+        fail(err);
+      } finally { window.__kdsSharing = false; b.classList.remove('busy'); }
       return;
     }
     // Speichern: Ordnerwahl sofort öffnen, Dateien ggf. danach fertigstellen
