@@ -106,6 +106,12 @@ und Terminen, darunter die Reiter
 Dateien liegen in Firestore (in Stücken), es braucht kein kostenpflichtiges Firebase Storage.
 „✎ Stammdaten“ (Admins) öffnet das Fahrzeug zum Bearbeiten.
 
+**Statistik (nur SE/KÖ).** ⚙ Einstellungen → *Daten* → **„📊 Statistik Aufträge“**: geschaffte Aufträge
+(abgeschlossen 1/2 oder 2/2, nach Abschlussdatum) diese Woche, diesen Monat, dieses Jahr mit Vergleich zu
+Vorwoche/Vormonat; offene und auf Prüfung wartende Aufträge; Säulen je Kalenderwoche (12 Wochen) und je Monat
+(Jahr wählbar); Tabelle je Jahr (neu angelegt, geschafft, Arbeitsstunden) und je Fahrzeug (Aufträge im Jahr,
+geschafft, Stunden, Summe je Gruppe) – Fahrzeug antippen öffnet die Fahrzeugakte.
+
 **Fuhrpark aus Excel.** ⚙ Einstellungen → *Daten* → **„Fuhrpark aus Excel ersetzen“**
 (nur Admins): die Fahrzeugliste (.xls/.xlsx, Aufbau wie „Fz.-Ident-Nr.“) wählen – Gruppen
 (Krane, Ladekrane, Zugmaschinen, BF3, Auflieger, PKW, Stapler) und Spalten werden übernommen,

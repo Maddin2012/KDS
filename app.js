@@ -233,6 +233,7 @@ function renderChrome() {
 
   let title;
   if (mode === 'home') title = 'Startseite';
+  else if (mode === 'stats') title = 'Statistik Aufträge';
   else if (mode === 'live') title = 'Laufende Servicelisten';
   else if (mode === 'liveview') { const r = S.running.find(x => x.id === S.liveId); title = 'Live: ' + (r ? r.cat + ' ' + ((r.draft && r.draft.header && r.draft.header.fId) || '') : 'Serviceliste'); }
   else if (mode === 'archive') title = 'Archiv';
@@ -249,7 +250,7 @@ function renderChrome() {
   } else title = (S.edit ? 'Vorlage ' : 'Serviceliste ') + S.cat;
   $('main-title').textContent = title;
   $('hero-badge').innerHTML = mode === 'order' && S.orderEdit ? statusBadge(S.orderEdit.status) : '';
-  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : (mode === 'live' || mode === 'liveview') ? 'Laufende Listen' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
+  $('sidebar-sub').textContent = mode === 'home' ? 'Betriebsportal' : mode === 'stats' ? 'Statistik' : (mode === 'live' || mode === 'liveview') ? 'Laufende Listen' : (mode === 'stock' || mode === 'article' || mode === 'reorder') ? 'Lager' : (mode === 'orders' || mode === 'order') ? 'Werkstattaufträge' : (mode === 'fleet' || mode === 'vehicle') ? 'Fuhrpark' : (mode === 'archive' || mode === 'protocol' || mode === 'protoedit') ? 'Archiv' : 'Serviceliste ' + S.cat;
   document.title = title + ' · Krandienst Schulz';
 
   $('view-home').classList.toggle('hidden', S.view !== 'home');
@@ -257,6 +258,7 @@ function renderChrome() {
   $('view-list').classList.toggle('hidden', S.view !== 'list');
   $('view-archive').classList.toggle('hidden', S.view !== 'archive');
   $('view-live').classList.toggle('hidden', S.view !== 'live' && S.view !== 'liveview');
+  $('view-stats').classList.toggle('hidden', S.view !== 'stats');
   $('view-protocol').classList.toggle('hidden', S.view !== 'protocol');
   $('view-fleet').classList.toggle('hidden', S.view !== 'fleet');
   $('view-vehicle').classList.toggle('hidden', S.view !== 'vehicle');
@@ -265,7 +267,7 @@ function renderChrome() {
   $('view-stock').classList.toggle('hidden', S.view !== 'stock');
   $('view-article').classList.toggle('hidden', S.view !== 'article');
   $('view-reorder').classList.toggle('hidden', S.view !== 'reorder');
-  $('cards').classList.toggle('hidden', ['home', 'live', 'liveview', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
+  $('cards').classList.toggle('hidden', ['home', 'stats', 'live', 'liveview', 'archive', 'edit', 'fleet', 'vehicle', 'orders', 'order', 'stock', 'article', 'reorder'].includes(mode));
   $('edit-banner').classList.toggle('hidden', mode !== 'edit');
   renderOrderLink();
   const cp = document.querySelector('#hero-actions [data-act="close-protocol"]');
@@ -1114,7 +1116,7 @@ function renderReorder() {
    Werkstattaufträge
    ===================================================================== */
 const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
-  'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager', 'svc'];
+  'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager', 'svc', 'doneAt', 'closedAt'];
 /* Ablauf: Offen (rot) → Abgeschlossen 1/2 (Bearbeiter, z. B. PE, orange) → Abgeschlossen 2/2 (nur SE/KÖ, grün).
    Erst die 2. Stufe legt Servicelisten ins Archiv und fragt nach einem Folgeauftrag.
    Früheres „In Arbeit“ gilt als „Offen“. */
@@ -1759,6 +1761,102 @@ function openOrderShare() {
   };
 }
 
+/* ---------- Statistik der Aufträge (nur SE/KÖ) ---------- */
+const tsMs = (v) => !v ? 0 : typeof v === 'number' ? v : (v.toMillis ? v.toMillis() : (v.seconds ? v.seconds * 1000 : 0));
+/* Wann wurde ein Auftrag geschafft? Abschluss 1/2 (bzw. 2/2); bei älteren Aufträgen ohne
+   Zeitstempel ersatzweise letzte Änderung bzw. Auftragsdatum. */
+function doneTime(o) {
+  const st = orderSt(o.status); if (st !== 'erledigt' && st !== 'fertig') return 0;
+  return tsMs(o.doneAt) || tsMs(o.closedAt) || tsMs(o.updatedAt) || (o.datum ? new Date(o.datum + 'T12:00:00').getTime() : 0) || tsMs(o.created);
+}
+const createdTime = (o) => tsMs(o.created) || (o.datum ? new Date(o.datum + 'T12:00:00').getTime() : 0);
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y = t.getUTCFullYear(), w = Math.ceil(((t - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7);
+  return { y, w };
+}
+const weekStart = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+/* Säulendiagramm (eine Reihe) als SVG – Werte stehen über den Säulen, Hover zeigt Details */
+function barChart(items, { label = 'Aufträge', highlight = -1 } = {}) {
+  const W = 640, H = 200, padL = 28, padB = 26, padT = 18, n = items.length;
+  const max = Math.max(1, ...items.map(i => i.v)), step = Math.max(1, Math.ceil(max / 4));
+  const top = step * Math.ceil(max / step), bw = (W - padL - 8) / n, inner = Math.max(6, bw - Math.max(4, bw * 0.28));
+  const y = (v) => padT + (H - padT - padB) * (1 - v / top);
+  let grid = ''; for (let g = 0; g <= top; g += step) grid += `<line x1="${padL}" x2="${W - 4}" y1="${y(g)}" y2="${y(g)}" class="sc-grid"/><text x="${padL - 6}" y="${y(g) + 3.5}" class="sc-ax" text-anchor="end">${g}</text>`;
+  const bars = items.map((it, i) => {
+    const x = padL + i * bw + (bw - inner) / 2, h = Math.max(0, y(0) - y(it.v)), r = Math.min(4, inner / 2, h);
+    const path = h > 0 ? `M${x},${y(0)} V${y(it.v) + r} Q${x},${y(it.v)} ${x + r},${y(it.v)} H${x + inner - r} Q${x + inner},${y(it.v)} ${x + inner},${y(it.v) + r} V${y(0)} Z` : '';
+    return `<g class="sc-bar${i === highlight ? ' hl' : ''}"><title>${esc(it.title || it.l)}: ${it.v} ${label}</title>
+      <rect x="${padL + i * bw}" y="${padT}" width="${bw}" height="${H - padT - padB}" class="sc-hit"/>
+      ${path ? `<path d="${path}"/>` : ''}${it.v ? `<text x="${x + inner / 2}" y="${y(it.v) - 5}" class="sc-val" text-anchor="middle">${it.v}</text>` : ''}
+      <text x="${x + inner / 2}" y="${H - 8}" class="sc-ax" text-anchor="middle">${esc(it.l)}</text></g>`;
+  }).join('');
+  return `<svg class="sc-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${grid}<line x1="${padL}" x2="${W - 4}" y1="${y(0)}" y2="${y(0)}" class="sc-base"/>${bars}</svg>`;
+}
+function renderStats() {
+  const box = $('view-stats'); if (!box || !amAdmin()) return;
+  const now = new Date(), orders = S.orders;
+  const years = [...new Set([now.getFullYear(), ...orders.map(o => new Date(createdTime(o) || Date.now()).getFullYear()), ...orders.map(o => doneTime(o)).filter(Boolean).map(t => new Date(t).getFullYear())])].sort((a, b) => b - a);
+  const year = S.statsYear && years.includes(S.statsYear) ? S.statsYear : now.getFullYear();
+  const done = orders.map(o => ({ o, t: doneTime(o) })).filter(x => x.t);
+  const ws = weekStart(now).getTime(), ms = new Date(now.getFullYear(), now.getMonth(), 1).getTime(), ys = new Date(now.getFullYear(), 0, 1).getTime();
+  const cnt = (from) => done.filter(x => x.t >= from).length;
+  const lastWeek = done.filter(x => x.t >= ws - 7 * 864e5 && x.t < ws).length;
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const lastMonth = done.filter(x => x.t >= prevMonthStart && x.t < ms).length;
+  const open = orders.filter(o => orderSt(o.status) === 'offen').length, wait = orders.filter(o => orderSt(o.status) === 'erledigt').length;
+  // letzte 12 Kalenderwochen
+  const weeks = []; for (let i = 11; i >= 0; i--) { const s = weekStart(new Date(ws - i * 7 * 864e5)).getTime(), e = s + 7 * 864e5, kw = isoWeek(new Date(s));
+    weeks.push({ l: 'KW ' + kw.w, title: `KW ${kw.w} (${new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}–${new Date(e - 864e5).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })})`, v: done.filter(x => x.t >= s && x.t < e).length }); }
+  const months = MONATE.map((m, i) => { const s = new Date(year, i, 1).getTime(), e = new Date(year, i + 1, 1).getTime(); return { l: m, title: `${m} ${year}`, v: done.filter(x => x.t >= s && x.t < e).length }; });
+  const yearRows = years.slice().sort((a, b) => a - b).map(y => { const s = new Date(y, 0, 1).getTime(), e = new Date(y + 1, 0, 1).getTime();
+    const created = orders.filter(o => { const t = createdTime(o); return t >= s && t < e; });
+    const fin = done.filter(x => x.t >= s && x.t < e);
+    return { y, created: created.length, done: fin.length, hours: fin.reduce((h, x) => h + orderHours(x.o), 0) }; });
+  // je Fahrzeug im gewählten Jahr
+  const s = new Date(year, 0, 1).getTime(), e = new Date(year + 1, 0, 1).getTime();
+  const byVeh = new Map();
+  orders.forEach(o => {
+    const ct = createdTime(o), dt = doneTime(o), inC = ct >= s && ct < e, inD = dt >= s && dt < e; if (!inC && !inD) return;
+    const v = orderVehicle(o), key = v ? v.id : 'free:' + (o.code || o.fahrzeug || '?');
+    const r = byVeh.get(key) || { label: v ? vehicleLabel(v) : (o.code || o.fahrzeug || '—'), gruppe: v ? (v.gruppe || '') : '', kz: v ? v.kz || '' : o.kz || '', created: 0, done: 0, hours: 0, vid: v ? v.id : null };
+    if (inC) r.created++; if (inD) { r.done++; r.hours += orderHours(o); }
+    byVeh.set(key, r);
+  });
+  const vehRows = [...byVeh.values()].sort((a, b) => b.created - a.created || b.done - a.done || deSort(a.label, b.label));
+  const vmax = Math.max(1, ...vehRows.map(r => r.created));
+  const groupRows = {}; vehRows.forEach(r => { const g = r.gruppe || 'Ohne Gruppe'; groupRows[g] = groupRows[g] || { n: 0, created: 0, done: 0 }; groupRows[g].n++; groupRows[g].created += r.created; groupRows[g].done += r.done; });
+  const tile = (l, v, sub) => `<div class="sc-tile"><label>${l}</label><b>${v}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  const kw = isoWeek(now);
+  box.innerHTML = `
+    <p class="proto-meta no-print">„Geschafft“ = abgeschlossen (1/2 oder 2/2), gezählt nach dem Tag des Abschlusses. Nur für SE und KÖ sichtbar.</p>
+    <div class="sc-tiles">
+      ${tile('Diese Woche', cnt(ws), `KW ${kw.w} · Vorwoche ${lastWeek}`)}
+      ${tile('Dieser Monat', cnt(ms), `${MONATE[now.getMonth()]} · Vormonat ${lastMonth}`)}
+      ${tile('Dieses Jahr', cnt(ys), String(now.getFullYear()))}
+      ${tile('Offen', open, 'noch nicht abgeschlossen')}
+      ${tile('Warten auf 2/2', wait, 'Prüfung SE / KÖ')}
+    </div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Geschafft je Woche</span></div><span class="proto-meta">letzte 12 Kalenderwochen</span></div>${barChart(weeks, { highlight: 11 })}</div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Geschafft je Monat</span></div>
+      <select id="st-year" class="sc-year" aria-label="Jahr">${years.map(y => `<option ${y === year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+      ${barChart(months, { highlight: year === now.getFullYear() ? now.getMonth() : -1 })}
+      <p class="proto-meta">${year}: ${months.reduce((a, m) => a + m.v, 0)} Aufträge geschafft</p></div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Je Jahr</span></div></div>
+      <table class="service-table sc-table"><thead><tr><th>Jahr</th><th>Neu angelegt</th><th>Geschafft</th><th>Arbeitsstunden (geschafft)</th></tr></thead>
+      <tbody>${yearRows.map(r => `<tr><td data-l="Jahr"><b>${r.y}</b></td><td data-l="Neu angelegt" class="mono">${r.created}</td><td data-l="Geschafft" class="mono">${r.done}</td><td data-l="Stunden" class="mono">${fmtHours(r.hours)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="box"><div class="sec-title"><div class="title-left"><span>Je Fahrzeug ${year}</span></div><span class="proto-meta">${vehRows.length} Fahrzeuge mit Aufträgen</span></div>
+      ${vehRows.length ? `<table class="service-table sc-table sc-veh"><thead><tr><th>Fahrzeug</th><th>Gruppe</th><th>Aufträge ${year}</th><th>Geschafft</th><th>Stunden</th></tr></thead>
+      <tbody>${vehRows.map(r => `<tr${r.vid ? ` class="sc-vrow" data-vid="${esc(r.vid)}"` : ''}><td data-l="Fahrzeug"><b>${esc(r.label)}</b>${r.kz ? `<small> · ${esc(r.kz)}</small>` : ''}</td><td data-l="Gruppe">${esc(r.gruppe || '—')}</td>
+        <td data-l="Aufträge"><span class="sc-inbar"><span style="width:${Math.round(r.created / vmax * 100)}%"></span></span><b class="mono">${r.created}</b></td>
+        <td data-l="Geschafft" class="mono">${r.done}</td><td data-l="Stunden" class="mono">${fmtHours(r.hours)}</td></tr>`).join('')}</tbody></table>
+      <p class="proto-meta" style="margin-top:8px">Je Gruppe: ${Object.entries(groupRows).sort((a, b) => b[1].created - a[1].created).map(([g, v]) => `<b>${esc(g)}</b> ${v.created} Aufträge (${v.n} Fahrzeuge)`).join(' · ')}</p>
+      <p class="proto-meta no-print">Fahrzeug antippen öffnet die Fahrzeugakte.</p>`
+        : `<p class="proto-meta">Im Jahr ${year} gibt es noch keine Aufträge.</p>`}</div>`;
+}
+
 /* ---------- Serviceliste zum Auftrag ---------- */
 /* Fahrzeuggruppe (Fuhrpark) → Kategorie der Serviceliste */
 const GROUP_CAT = { krane: 'Kran', ladekrane: 'Ladekran', zugmaschinen: 'LKW', bf3: 'BF3', pkw: 'PKW' };
@@ -2046,6 +2144,10 @@ function onOrderInput(t) {
     o[f] = t.value;
     if (f === 'status') {
       if (t.value === 'fertig' && !amAdmin()) { o.status = 'erledigt'; showToast('Den letzten Schritt (2/2) schließen SE oder KÖ ab'); }
+      // Zeitpunkte für die Statistik: geschafft (1/2) und endgültig abgeschlossen (2/2)
+      if (o.status === 'offen') { o.doneAt = null; o.closedAt = null; }
+      if ((o.status === 'erledigt' || o.status === 'fertig') && !o.doneAt) o.doneAt = Date.now();
+      if (o.status === 'fertig') o.closedAt = Date.now(); else o.closedAt = null;
       renderOrder();
       if (o.status === 'erledigt') showToast('Abgeschlossen 1/2 – SE oder KÖ prüfen und schließen endgültig ab');
       if (o.status === 'fertig') archiveOrderServices(o).then(() => offerFollowUpOrder(o));
@@ -2770,10 +2872,12 @@ function render() {
   if (S.view !== 'order' && orderFilesFor) closeOrderFiles();
   if (S.fleetEdit && (S.view !== 'fleet' || !amAdmin())) { flushFleetEdit(); S.fleetEdit = false; }
   if (S.view === 'reorder' && !amAdmin()) S.view = 'stock';   // Bestellvorschläge nur für SE/KÖ
+  if (S.view === 'stats' && !amAdmin()) S.view = 'home';      // Statistik nur für SE/KÖ
   if (S.view === 'list') {
     if (S.edit) renderEdit();
     else { renderFill(); applyHeader(draft.header); renderMonteure(); }
   } else if (S.view === 'archive') renderArchive();
+  else if (S.view === 'stats') renderStats();
   else if (S.view === 'live') renderLive();
   else if (S.view === 'liveview') renderLiveView();
   else if (S.view === 'protocol') renderProtocol();
@@ -3321,6 +3425,7 @@ function openSettings() {
         <h4>Daten</h4>
         <div class="set-list">
           <button class="set-btn" type="button" data-s="fleetxls">Fuhrpark aus Excel ersetzen <small>Fahrzeugliste .xls / .xlsx</small></button>
+          <button class="set-btn" type="button" data-s="stats">📊 Statistik Aufträge <small>Woche, Monat, Jahr, je Fahrzeug</small></button>
           <button class="set-btn" type="button" data-s="import">Daten aus alter Version übernehmen <small>KDS-Altdaten.json</small></button>
         </div>
       </div>` : ''}
@@ -3377,6 +3482,7 @@ function openSettings() {
     if (!b) return;
     const go = b.dataset.s;
     if (go === 'close') { close(); return; }
+    if (go === 'stats') { if (!amAdmin()) return; close(); S.view = 'stats'; render(); window.scrollTo(0, 0); return; }
     if (go === 'newrec') {
       if (!amAdmin()) return;
       if (!(await confirmModal(`Neuen Wiederherstellungs-Code für ${S.me} erstellen? Ein alter Code wird damit ungültig.`, 'Erstellen', false))) return;
@@ -4038,6 +4144,8 @@ $('btn-settings').addEventListener('click', openSettings);
 $('arch-search').addEventListener('input', renderArchive);
 $('arch-cat').addEventListener('change', renderArchive);
 $('fleet-search').addEventListener('input', renderFleet);
+$('view-stats').addEventListener('change', (e) => { if (e.target.id === 'st-year') { S.statsYear = +e.target.value; renderStats(); } });
+$('view-stats').addEventListener('click', (e) => { const r = e.target.closest('.sc-vrow'); if (r) openAkte(r.dataset.vid); });
 $('order-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadOrderFiles(fs); });
 $('akte-file').addEventListener('change', (e) => { const fs = Array.from(e.target.files || []); if (fs.length) uploadAkteFiles(fs); });
 $('view-vehicle').addEventListener('input', (e) => { if (e.target.classList.contains('ak-in')) onAkteInput(e.target); else if (e.target.id === 'ak-note') autoSize(e.target); });
@@ -4407,6 +4515,7 @@ async function start() {
     S.orders = list;
     if (S.view === 'list' && !S.edit && draft.header && draft.header.orderId) applyRemoteSvc();
     if (S.view === 'live') renderLive();
+    if (S.view === 'stats') renderStats();
     renderNav();
     if (S.view === 'orders') renderOrders();
     if (S.view === 'order' && S.openOrderId) {
