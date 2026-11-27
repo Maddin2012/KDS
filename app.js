@@ -1115,9 +1115,11 @@ function renderReorder() {
    ===================================================================== */
 const ORDER_FIELDS = ['nr', 'created', 'status', 'vehId', 'fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum',
   'rows', 'notes', 'crew', 'erstelltVon', 'source', 'lager', 'svc'];
-/* Ablauf: Offen (rot) → In Arbeit → Abgeschlossen 1/2 (Bearbeiter, z. B. PE) → Abgeschlossen 2/2 (nur SE/KÖ).
-   Erst die 2. Stufe legt Servicelisten ins Archiv und fragt nach einem Folgeauftrag. */
-const ORDER_STATUS = { offen: 'Offen', arbeit: 'In Arbeit', erledigt: 'Abgeschlossen 1/2', fertig: 'Abgeschlossen 2/2' };
+/* Ablauf: Offen (rot) → Abgeschlossen 1/2 (Bearbeiter, z. B. PE, orange) → Abgeschlossen 2/2 (nur SE/KÖ, grün).
+   Erst die 2. Stufe legt Servicelisten ins Archiv und fragt nach einem Folgeauftrag.
+   Früheres „In Arbeit“ gilt als „Offen“. */
+const ORDER_STATUS = { offen: 'Offen', erledigt: 'Abgeschlossen 1/2', fertig: 'Abgeschlossen 2/2' };
+const orderSt = (s) => ORDER_STATUS[s] ? s : 'offen';
 const emptyOrderRow = () => ({ id: newId(), text: '', mat: '', h: '', done: false });
 const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
 const fmtHours = (n) => n.toFixed(1).replace('.', ',') + ' h';
@@ -1134,7 +1136,7 @@ function normalizeOrder(o) {
   ['fahrzeug', 'code', 'werk', 'kz', 'km', 'ow', 'uw', 'datum', 'notes'].forEach(f => { d[f] = d[f] || ''; });
   return d;
 }
-const statusBadge = (st) => `<span class="badge st-${esc(st)}">${esc(ORDER_STATUS[st] || st)}</span>`;
+const statusBadge = (st) => { st = orderSt(st); return `<span class="badge st-${esc(st)}">${esc(ORDER_STATUS[st])}</span>`; };
 
 function renderOrders() {
   if (S.ordersError) {
@@ -1145,7 +1147,7 @@ function renderOrders() {
   }
   const q = $('orders-search').value.trim().toLowerCase(), st = S.ordersFilter;
   const list = S.orders
-    .filter(o => !st || (st === 'open' ? o.status !== 'fertig' : o.status === st))
+    .filter(o => !st || (st === 'open' ? o.status !== 'fertig' : orderSt(o.status) === st))
     .filter(o => !q || [o.nr, o.fahrzeug, o.code, o.kz, o.werk, o.notes, ...(o.crew || []).map(monteurLabel),
       ...(o.rows || []).flatMap(r => [r.text, r.mat])].join(' ').toLowerCase().includes(q))
     .sort((a, b) => (b.created || 0) - (a.created || 0));
@@ -1158,7 +1160,7 @@ function renderOrders() {
     const done = (o.rows || []).filter(r => r.text && r.done).length, all = (o.rows || []).filter(r => r.text).length;
     const pos = (o.rows || []).filter(r => String(r.text || '').trim());
     return `
-    <button class="order-card order-row st-${esc(o.status || 'offen')}" data-oid="${esc(o.id)}" type="button">
+    <button class="order-card order-row st-${esc(orderSt(o.status))}" data-oid="${esc(o.id)}" type="button">
       <span class="oc-head">
         <span class="oc-id${o.code ? ' mono' : ''}">${esc(o.code || o.fahrzeug || '—')}</span>
         <span class="oc-badges">${statusBadge(o.status)}${o._pending ? '<span class="badge pend" title="Wird übertragen">⟳</span>' : ''}</span>

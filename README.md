@@ -142,7 +142,7 @@ darunter klappt ein kleines Buchungsfeld auf (nochmal antippen schließt es):
   (gezählten Bestand festlegen) und Löschen: nur Admins. Neue Kategorien und
   Lagerorte legen Admins direkt in der Auswahl an („+ Neue …“).
 
-**Status der Aufträge.** 🔴 **Offen** (neu geschrieben) → 🟡 **In Arbeit** → **Abgeschlossen 1/2**
+**Status der Aufträge.** 🔴 **Offen** (neu geschrieben) → 🟠 **Abgeschlossen 1/2**
 (der Bearbeiter, z. B. PE, ist fertig; ändern geht noch) → 🟢 **Abgeschlossen 2/2** (nur SE/KÖ; danach
 gesperrt). Erst bei 2/2 kommen die Servicelisten ins Archiv und in die Fahrzeug-Historie, und es wird
 gefragt, ob für offene Mängel (n.i.O., nicht behoben) ein Folgeauftrag angelegt werden soll. In der
