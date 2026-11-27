@@ -1659,47 +1659,80 @@ function openOrderShare() {
   const o = S.orderEdit; if (!o) return;
   flushOrderSave(); flushSvcSync();
   const nAtt = (S.orderFiles || []).length;
+  const attSize = (S.orderFiles || []).reduce((s, f) => s + (f.size || 0), 0);
+  const attDefault = attSize <= 15 * 1024 * 1024;       // große Videos nicht automatisch mitnehmen
   const canShare = !!(navigator.canShare && navigator.share);
   const canFolder = !!window.showDirectoryPicker;
   const ov = $('setup');
   ov.innerHTML = `<div class="setup-card">${cardHead}<h3>📤 Auftrag senden / speichern</h3>
     <p>Der Auftrag wird als <b>PDF</b> erstellt${o.svc.length ? ` – mit ${o.svc.length === 1 ? 'der Serviceliste' : o.svc.length + ' Servicelisten'}` : ''}.</p>
-    ${nAtt ? `<label class="sh-opt"><input type="checkbox" id="sh-att" checked> Anhänge mitnehmen (${nAtt} ${nAtt === 1 ? 'Datei' : 'Dateien'})</label>` : ''}
-    <div class="set-list" style="margin-top:10px">
-      ${canShare ? '<button class="set-btn" type="button" data-sh="share">📲 Senden <small>WhatsApp, E-Mail, Teams …</small></button>' : ''}
+    ${nAtt ? `<label class="sh-opt"><input type="checkbox" id="sh-att" ${attDefault ? 'checked' : ''}> Anhänge mitnehmen (${nAtt} ${nAtt === 1 ? 'Datei' : 'Dateien'}, ${fmtSize(attSize)})</label>` : ''}
+    <p class="sh-state" id="sh-state">⏳ PDF wird vorbereitet …</p>
+    <div class="set-list" style="margin-top:6px">
+      ${canShare ? '<button class="set-btn" type="button" data-sh="share" disabled>📲 Senden <small>WhatsApp, E-Mail, Teams …</small></button>' : ''}
       <button class="set-btn" type="button" data-sh="save">💾 ${canFolder ? 'In Ordner speichern' : 'Speichern / Herunterladen'} <small>${canFolder ? 'Ordner auf dem Rechner wählen' : 'landet im Download-Ordner'}</small></button>
     </div>
     ${canShare ? '' : '<p class="proto-meta" style="margin-top:10px">Senden direkt aus der App geht auf diesem Gerät nicht – Datei speichern und dann im E-Mail-Programm anhängen.</p>'}
     <p class="setup-err" id="sh-err"></p>
     <div class="setup-back"><button class="link-btn" data-n="close" type="button">Abbrechen</button></div></div>`;
   ov.classList.remove('hidden');
+  // Dateien sofort vorbereiten: Teilen und Ordnerwahl müssen direkt beim Antippen starten,
+  // sonst blockiert der Browser sie („nur nach einer Benutzeraktion“).
+  let pdf = null, att = null, failed = null;
+  const ready = (async () => {
+    try {
+      pdf = await buildOrderPdf(o);
+      const st0 = $('sh-state'); if (st0 && nAtt) st0.textContent = '⏳ Anhänge werden geladen …';
+      att = nAtt ? await attachmentFiles(o) : [];
+      const st = $('sh-state'); if (st) st.textContent = `✓ Bereit: ${pdf.name}${nAtt ? ` + ${nAtt} ${nAtt === 1 ? 'Anhang' : 'Anhänge'}` : ''}`;
+      ov.querySelectorAll('[data-sh="share"]').forEach(x => { x.disabled = false; });
+    } catch (err) {
+      failed = err; const st = $('sh-state'); if (st) st.textContent = '';
+      const el = $('sh-err'); if (el) el.textContent = 'PDF konnte nicht erstellt werden: ' + ((err && err.message) || err);
+    }
+  })();
+  const files = () => [pdf, ...(($('sh-att') && $('sh-att').checked) ? att : [])];
   const close = () => { ov.classList.add('hidden'); ov.onclick = null; };
+  const fail = (err) => {
+    const msg = err && err.name === 'NotAllowedError' ? 'Das Gerät hat das Senden blockiert – bitte nochmal antippen.'
+      : err && err.name === 'SecurityError' ? 'Der Browser erlaubt die Ordnerwahl hier nicht – Datei wird stattdessen heruntergeladen.'
+      : (err && err.message) || 'Das hat nicht geklappt.';
+    $('sh-err').textContent = msg; showToast(msg);
+  };
   ov.onclick = async (e) => {
     if (e.target.closest('[data-n="close"]')) { close(); return; }
-    const b = e.target.closest('[data-sh]'); if (!b) return;
-    const withAtt = $('sh-att') ? $('sh-att').checked : false;
-    ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = true; }); $('sh-err').textContent = 'PDF wird erstellt …';
-    try {
-      const pdf = await buildOrderPdf(o);
-      const files = [pdf, ...(withAtt ? await attachmentFiles(o) : [])];
-      $('sh-err').textContent = '';
-      if (b.dataset.sh === 'share') {
-        let list = files;
-        if (!navigator.canShare({ files: list })) { list = [pdf]; if (withAtt) showToast('Anhänge lassen sich hier nicht mitsenden – nur das PDF'); }
-        try { await navigator.share({ files: list, title: 'Auftrag ' + o.nr, text: `Werkstattauftrag ${o.nr}${o.code ? ' – Fahrzeug ' + o.code : ''}` }); close(); }
-        catch (err) { if (err && err.name === 'AbortError') { close(); return; } throw err; }
-      } else if (window.showDirectoryPicker) {
-        let dir; try { dir = await window.showDirectoryPicker({ id: 'kds-auftraege', mode: 'readwrite' }); } catch (err) { if (err && err.name === 'AbortError') { ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = false; }); return; } throw err; }
-        for (const f of files) { const h = await dir.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f); await w.close(); }
-        close(); showToast(`${files.length === 1 ? 'PDF' : files.length + ' Dateien'} im Ordner „${dir.name}“ gespeichert`);
-      } else {
-        files.forEach((f, i) => setTimeout(() => downloadFile(f), i * 400));
-        close(); showToast(files.length === 1 ? 'PDF wird gespeichert' : files.length + ' Dateien werden gespeichert');
-      }
-    } catch (err) {
-      ov.querySelectorAll('[data-sh]').forEach(x => { x.disabled = false; });
-      $('sh-err').textContent = (err && err.message) || 'Das hat nicht geklappt.';
+    const b = e.target.closest('[data-sh]'); if (!b || b.disabled) return;
+    $('sh-err').textContent = '';
+    if (b.dataset.sh === 'share') {
+      if (!pdf) return;
+      let list = files();
+      try { if (!navigator.canShare({ files: list })) { list = [pdf]; if (list.length < files().length) showToast('Anhänge lassen sich hier nicht mitsenden – nur das PDF'); } } catch (err) { list = [pdf]; }
+      try {
+        await navigator.share({ files: list, title: 'Auftrag ' + o.nr, text: `Werkstattauftrag ${o.nr}${o.code ? ' – Fahrzeug ' + o.code : ''}` });   // direkt im Tipp-Ereignis
+        close(); showToast('Gesendet');
+      } catch (err) { if (err && err.name === 'AbortError') return; fail(err); }
+      return;
     }
+    // Speichern: Ordnerwahl sofort öffnen, Dateien ggf. danach fertigstellen
+    if (window.showDirectoryPicker) {
+      let dir;
+      try { dir = await window.showDirectoryPicker({ id: 'kds-auftraege', mode: 'readwrite' }); }
+      catch (err) { if (err && err.name === 'AbortError') return; fail(err); if (err && err.name !== 'SecurityError') return; }
+      if (dir) {
+        $('sh-state').textContent = '⏳ Wird gespeichert …';
+        await ready; if (failed) return;
+        try {
+          const list = files();
+          for (const f of list) { const h = await dir.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f); await w.close(); }
+          close(); showToast(`${list.length === 1 ? 'PDF' : list.length + ' Dateien'} im Ordner „${dir.name}“ gespeichert`);
+        } catch (err) { fail(err); }
+        return;
+      }
+    }
+    await ready; if (failed) return;
+    const list = files();
+    list.forEach((f, i) => setTimeout(() => downloadFile(f), i * 500));
+    close(); showToast(list.length === 1 ? 'PDF wird heruntergeladen' : list.length + ' Dateien werden heruntergeladen');
   };
 }
 
