@@ -1267,3 +1267,9 @@
   .order-card.st-offen { border-left-color:#d64535 } .order-card.st-arbeit { border-left-color:#e3a400 }
   .order-card.st-erledigt { border-left-color:#8fd3ae } .order-card.st-fertig { border-left-color:var(--done) }
   .order-card:hover { border-color:var(--orange) } .order-card.st-offen:hover, .order-card.st-arbeit:hover, .order-card.st-erledigt:hover, .order-card.st-fertig:hover { border-top-color:var(--orange); border-right-color:var(--orange); border-bottom-color:var(--orange) }
+  /* Abgeschlossen 1/2 in Orange */
+  .badge.st-erledigt { background:var(--orange-lt); color:var(--orange-dk); box-shadow:inset 0 0 0 1.5px var(--orange) }
+  html[data-theme="dark"] .badge.st-erledigt { background:#3b2a16; color:#ffb35c; box-shadow:inset 0 0 0 1.5px #ff8300 }
+  @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .badge.st-erledigt { background:#3b2a16; color:#ffb35c; box-shadow:inset 0 0 0 1.5px #ff8300 } }
+  .hero-badge .badge.st-erledigt { background:var(--orange-dk) !important; color:#fff !important }
+  .order-card.st-erledigt { border-left-color:var(--orange) }
